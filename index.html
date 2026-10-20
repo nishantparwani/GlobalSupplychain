@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Global Chain AI | Shipping Risk Monitor</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if (window.tailwind) {
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+              mono: ['JetBrains Mono', 'ui-monospace', 'Consolas', 'monospace']
+            }
+          }
+        }
+      };
+    }
+  </script>
+
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0B0F17;
+      --panel: #111827;
+      --panel-2: #0F1522;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --text: #E5E7EB;
+      --muted: #9CA3AF;
+      --faint: #6B7280;
+      --safe: #10B981;
+      --elev: #F59E0B;
+      --crit: #EF4444;
+      --accent: #60A5FA;
+    }
+    html { scroll-behavior: smooth; scroll-padding-top: 100px; }
+    html, body { background: var(--bg); color: var(--text); margin: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+    .card-inner { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; }
+    .divider { border-color: var(--border); }
+
+    .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; line-height: 1; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--muted); white-space: nowrap; }
+    .chip-lg { font-size: 13px; padding: 8px 13px; }
+    .chip-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+    .t-safe { color: #6EE7B7; border-color: rgba(16,185,129,.35); background: rgba(16,185,129,.08); }
+    .t-elev { color: #FCD34D; border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.08); }
+    .t-crit { color: #FCA5A5; border-color: rgba(239,68,68,.35);  background: rgba(239,68,68,.08); }
+    .t-neutral { color: var(--muted); border-color: var(--border-strong); background: transparent; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 500; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border-strong); color: var(--text); background: #1A2233; transition: background .15s, border-color .15s; cursor: pointer; white-space: nowrap; }
+    .btn:hover:not(:disabled) { background: #222C40; border-color: rgba(255,255,255,.22); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: #E5E7EB; color: #0B0F17; border-color: #E5E7EB; }
+    .btn-primary:hover:not(:disabled) { background: #FFFFFF; border-color: #FFFFFF; }
+    .btn-sm { font-size: 12px; padding: 6px 10px; border-radius: 7px; }
+    .btn-quiet { background: transparent; }
+    .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+    .seg button { font-size: 12px; padding: 6px 12px; color: var(--muted); background: transparent; }
+    .seg button.on { background: #1F2937; color: var(--text); }
+
+    .field { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; font-size: 13px; padding: 9px 10px; outline: none; }
+    .field:focus { border-color: rgba(96,165,250,.6); }
+    .label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
+
+    .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(0,0,0,.2); border-top-color: currentColor; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.06); overflow: hidden; }
+    .bar > span { display: block; height: 100%; border-radius: 3px; }
+
+    .src-link { font-size: 12px; color: var(--muted); text-decoration: none; border-bottom: 1px solid transparent; }
+    .src-link:hover { color: var(--text); border-bottom-color: var(--border-strong); }
+
+    /* Leaflet */
+    .leaflet-container { background: #1B1E23 !important; font-family: 'Inter', system-ui, sans-serif; }
+    .leaflet-control-zoom { border: 1px solid var(--border-strong) !important; border-radius: 8px !important; overflow: hidden; box-shadow: none !important; }
+    .leaflet-control-zoom a { background: var(--panel) !important; color: var(--muted) !important; border-bottom: 1px solid var(--border) !important; }
+    .leaflet-control-zoom a:hover { color: #fff !important; }
+    .leaflet-control-attribution { background: rgba(11,15,23,.8) !important; color: var(--faint) !important; font-size: 10px !important; }
+    .leaflet-control-attribution a { color: var(--muted) !important; }
+    .leaflet-tooltip.gc-tip { background: var(--panel); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; font-size: 11px; font-weight: 500; padding: 4px 8px; box-shadow: none; }
+    .leaflet-tooltip.gc-tip::before { display: none; }
+
+    /* Markdown in Copilot answers */
+    .md p { margin: 0 0 8px; }
+    .md .md-h { color: #F3F4F6; font-weight: 600; margin: 12px 0 6px; font-size: 14px; }
+    .md .md-h:first-child { margin-top: 0; }
+    .md ul, .md ol { margin: 4px 0 10px; padding-left: 20px; }
+    .md ul { list-style: disc; } .md ol { list-style: decimal; }
+    .md li { margin: 3px 0; }
+    .md li::marker { color: var(--faint); }
+    .md code { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; }
+    .md pre { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: rgba(255,255,255,.04); border: 1px solid var(--border); padding: 10px; border-radius: 8px; overflow-x: auto; }
+    .md a { color: var(--accent); }
+    .md strong { color: #F9FAFB; font-weight: 600; }
+    .md table { border-collapse: collapse; margin: 6px 0 10px; font-size: 12px; }
+    .md td, .md th { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+    .md .md-gap { height: 4px; }
+
+    .layer-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); cursor: pointer; padding: 3px 0; user-select: none; }
+    .layer-row input { accent-color: #60A5FA; }
+    .layer-row:hover { color: var(--text); }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel) !important; color: var(--text) !important; border: 1px solid var(--border-strong); box-shadow: 0 12px 24px rgba(0,0,0,.4) !important; }
+    .leaflet-popup-content { margin: 12px 14px !important; font-size: 12px; line-height: 1.5; }
+    .leaflet-container a.leaflet-popup-close-button { color: var(--muted) !important; }
+    .leaflet-tooltip.gc-traffic { background: rgba(17,24,39,.92); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; font-size: 10.5px; padding: 2px 6px; box-shadow: none; }
+    .leaflet-tooltip.gc-traffic::before { display: none; }
+    .tab { font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 8px; color: var(--muted); }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,.04); }
+    .tab.on { color: var(--text); background: #1F2937; }
+
+    details > summary { list-style: none; cursor: pointer; }
+    details > summary::-webkit-details-marker { display: none; }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.18); }
+
+    #boot-error { display: none; max-width: 640px; margin: 96px auto; padding: 24px; border: 1px solid rgba(239,68,68,.35); border-radius: 12px; font-size: 14px; color: #FCA5A5; background: #111827; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="boot-error"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+    // =====================================================================
+    // CONFIG & HELPERS
+    // =====================================================================
+    const API_BASE = (() => {
+      const { protocol, port } = window.location;
+      if (protocol.startsWith('http') && port === '8000') return '';
+      return 'http://localhost:8000';
+    })();
+
+    async function api(path, opts = {}, timeoutMs = 30000) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(API_BASE + path, { ...opts, signal: ctrl.signal });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || data.detail || `HTTP ${res.status}`);
+        return data;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    const STATUS = {
+      CRITICAL: { label: 'Critical', tone: 't-crit', color: '#EF4444' },
+      ELEVATED: { label: 'Elevated', tone: 't-elev', color: '#F59E0B' },
+      NORMAL:   { label: 'Normal',   tone: 't-safe', color: '#10B981' },
+    };
+    const bandFor = (sev) => (sev >= 8 ? STATUS.CRITICAL : sev >= 5 ? STATUS.ELEVATED : STATUS.NORMAL);
+    const titleCase = (s) => (s || '').toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const nodeName = (graph, id) => graph?.nodes.find((n) => n.id === id)?.name || titleCase(id);
+    const fmtNum = (n) => (typeof n === 'number' ? n.toLocaleString('en-US') : '--');
+    const EVENT_LABEL = {
+      MILITARY_CONFLICT: 'Military conflict', PIRACY: 'Piracy / armed robbery', DROUGHT_WEATHER: 'Drought / weather',
+      STRIKE_LABOR: 'Labour action', GENERAL_ADVISORY: 'General advisory',
+    };
+    const relTime = (iso) => {
+      if (!iso) return null;
+      const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+      if (s < 60) return 'just now';
+      if (s < 3600) return `${Math.round(s / 60)} min ago`;
+      if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+      return `${Math.round(s / 86400)} d ago`;
+    };
+    const clockTime = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null);
+    const pct = (x, d = 0) => (typeof x === 'number' ? `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(d)}%` : '--');
+    const fmtPrice = (x) => (typeof x !== 'number' ? '--' : x >= 1000 ? x.toLocaleString('en-US', { maximumFractionDigits: 0 }) : x >= 100 ? x.toFixed(1) : x.toFixed(2));
+
+    // Minimal, safe markdown: escape everything first, then apply a small grammar.
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function inlineMd(s) {
+      return s
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:]|$)/g, '$1<em>$2</em>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    }
+    function renderMarkdown(src) {
+      const lines = escapeHtml(src || '').split('\n');
+      let html = '', list = null, inCode = false, code = [], table = [];
+      const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+      const flushTable = () => {
+        if (!table.length) return;
+        const rows = table.filter((r) => !/^\s*\|?\s*:?-{2,}/.test(r));
+        html += '<table>';
+        rows.forEach((r, i) => {
+          const cells = r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+          const tag = i === 0 ? 'th' : 'td';
+          html += '<tr>' + cells.map((c) => `<${tag}>${inlineMd(c.trim())}</${tag}>`).join('') + '</tr>';
+        });
+        html += '</table>';
+        table = [];
+      };
+      for (const raw of lines) {
+        if (raw.trim().startsWith('```')) {
+          flushTable();
+          if (inCode) { html += `<pre>${code.join('\n')}</pre>`; code = []; inCode = false; }
+          else { closeList(); inCode = true; }
+          continue;
+        }
+        if (inCode) { code.push(raw); continue; }
+        const line = raw.replace(/\s+$/, '');
+        if (/^\s*\|.*\|\s*$/.test(line)) { closeList(); table.push(line); continue; }
+        flushTable();
+        let m;
+        if ((m = line.match(/^#{1,4}\s+(.*)$/))) { closeList(); html += `<div class="md-h">${inlineMd(m[1])}</div>`; continue; }
+        if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { if (list !== 'ul') { closeList(); html += '<ul>'; list = 'ul'; } html += `<li>${inlineMd(m[1])}</li>`; continue; }
+        if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== 'ol') { closeList(); html += '<ol>'; list = 'ol'; } html += `<li>${inlineMd(m[1])}</li>`; continue; }
+        if (line.trim() === '') { closeList(); html += '<div class="md-gap"></div>'; continue; }
+        closeList();
+        html += `<p>${inlineMd(line)}</p>`;
+      }
+      flushTable();
+      if (inCode) html += `<pre>${code.join('\n')}</pre>`;
+      closeList();
+      return html;
+    }
+
+    // =====================================================================
+    // LAYOUT PRIMITIVES
+    // =====================================================================
+    function Section({ id, title, description, actions, children }) {
+      return (
+        <section id={id} className="space-y-6">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+            <div className="max-w-2xl">
+                            <h2 className="text-xl font-semibold text-gray-100">{title}</h2>
+              {description && <p className="text-sm text-gray-400 mt-2 leading-relaxed">{description}</p>}
+            </div>
+            {actions && <div className="flex flex-wrap items-center gap-3">{actions}</div>}
+          </div>
+          {children}
+        </section>
+      );
+    }
+
+    function StatusChip({ status }) {
+      const s = STATUS[status] || STATUS.NORMAL;
+      return <span className={`chip ${s.tone}`}><span className="chip-dot" style={{ background: s.color }} />{s.label}</span>;
+    }
+
+    function SeverityChip({ severity }) {
+      const s = bandFor(severity);
+      return <span className={`chip ${s.tone}`}>{s.label} <span className="mono">{severity}/10</span></span>;
+    }
+
+    function Metric({ label, value, unit, tone }) {
+      return (
+        <div>
+          <div className="text-xs text-gray-500 mb-1">{label}</div>
+          <div className="text-xl font-semibold text-gray-100">
+            <span className="mono" style={tone ? { color: tone } : null}>{value}</span>
+            {unit && <span className="text-xs font-normal text-gray-500 ml-1">{unit}</span>}
+          </div>
+        </div>
+      );
+    }
+
+    function SourceLink({ url, label = 'Source' }) {
+      if (!url) return null;
+      return <a className="src-link" href={url} target="_blank" rel="noopener noreferrer">[{label} ↗]</a>;
+    }
+
+    // =====================================================================
+    // HEADER
+    // =====================================================================
+    function Header({ online, intel, onAsk }) {
+      const live = intel?.mode === 'LIVE';
+      const links = [['overview', 'Overview'], ['routing', 'Map'], ['signals', 'Signals'], ['intelligence', 'News'], ['markets', 'Markets'], ['commodities', 'Goods']];
+      return (
+        <header className="sticky top-0 z-[1100] border-b divider bg-[#0B0F17]/95">
+          <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between gap-6">
+            <a href="#overview" className="flex items-center gap-4 min-w-0">
+              <svg width="42" height="42" viewBox="0 0 28 28" className="shrink-0" aria-hidden="true">
+                <rect x="0.5" y="0.5" width="27" height="27" rx="7" fill="#111827" stroke="rgba(255,255,255,0.14)" />
+                <path d="M6 18.5c2.5-1.6 5-1.6 8 0s5.5 1.6 8 0" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M8 13.5 L13 9 L16 11.5 L21 7.5" fill="none" stroke="#10B981" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <div className="min-w-0">
+                <div className="text-lg font-semibold text-gray-50 truncate leading-tight">Global Chain AI</div>
+                <div className="text-sm text-gray-400 truncate">Shipping risk monitor</div>
+              </div>
+            </a>
+            <nav className="hidden lg:flex items-center gap-1">
+              {links.map(([id, label]) => (
+                <a key={id} href={`#${id}`} className="text-[15px] font-medium text-gray-300 hover:text-white px-4 py-2 rounded-lg hover:bg-white/5">{label}</a>
+              ))}
+              <button onClick={onAsk} className="text-[15px] font-medium text-gray-300 hover:text-white px-4 py-2 rounded-lg hover:bg-white/5">Ask</button>
+            </nav>
+            <div className="hidden md:flex items-center gap-2">
+              <span className={`chip chip-lg ${online === false ? 't-crit' : online ? 't-safe' : 't-neutral'}`}>
+                <span className="chip-dot" style={{ background: online === false ? '#EF4444' : online ? '#10B981' : '#6B7280' }} />
+                {online === false ? 'Offline' : online ? 'Connected' : 'Connecting'}
+              </span>
+              {intel && <span className={`chip chip-lg ${live ? 't-safe' : 't-neutral'}`}>{live ? `News updated ${clockTime(intel.scanned_at)}` : 'Sample news'}</span>}
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    // =====================================================================
+    // OVERVIEW: CHOKE POINT STATUS
+    // =====================================================================
+    function Overview({ chokes, intel, onSelect }) {
+      const counts = useMemo(() => {
+        const c = { CRITICAL: 0, ELEVATED: 0, NORMAL: 0 };
+        (chokes || []).forEach((x) => { c[x.status] = (c[x.status] || 0) + 1; });
+        return c;
+      }, [chokes]);
+      return (
+        <section id="overview" className="space-y-8">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+            <div className="max-w-3xl">
+              <h1 className="text-3xl font-semibold tracking-tight text-gray-50">Global shipping risk</h1>
+              <p className="text-base text-gray-400 mt-3 leading-relaxed">
+                Today's risk at the five sea passages that carry most of the world's trade, the safest way to move cargo between ports,
+                and which goods are feeling the pressure.
+              </p>
+            </div>
+            <div className="flex gap-8">
+              <Metric label="Critical" value={counts.CRITICAL} tone="#FCA5A5" />
+              <Metric label="Elevated" value={counts.ELEVATED} tone="#FCD34D" />
+              <Metric label="Normal" value={counts.NORMAL} tone="#6EE7B7" />
+            </div>
+          </div>
+          {intel && intel.mode !== 'LIVE' && (
+            <div className="card px-5 py-4 text-sm text-gray-400 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <span>These are sample reports. Load the latest news to update the risk levels.</span>
+              <a href="#intelligence" className="btn btn-sm shrink-0">Get latest news</a>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {(chokes || Array.from({ length: 5 })).map((c, i) => c ? (
+              <button key={c.id} onClick={() => onSelect(c.id)}
+                className="card text-left p-5 hover:border-white/20 transition-colors flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="text-sm font-medium text-gray-100 leading-snug">{c.name}</div>
+                  <span className="chip-dot mt-1.5 shrink-0" style={{ background: STATUS[c.status].color }} />
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="mono text-2xl font-medium text-gray-100">{c.effective_risk.toFixed(0)}</span>
+                  <span className="text-xs text-gray-500">/ 10</span>
+                </div>
+                <div className="bar"><span style={{ width: `${c.effective_risk * 10}%`, background: STATUS[c.status].color }} /></div>
+                {c.traffic && (
+                  <div className="text-xs text-gray-400">
+                    Ships <span className="mono text-gray-200">{c.traffic.recent_7d_mean.toFixed(0)}/day</span>{' '}
+                    <span className="mono" style={{ color: c.traffic.pct_vs_baseline <= -0.25 ? '#FCA5A5' : c.traffic.pct_vs_baseline <= -0.1 ? '#FCD34D' : '#9CA3AF' }}>
+                      {pct(c.traffic.pct_vs_baseline)}
+                    </span> vs normal
+                  </div>
+                )}
+                <div className="text-xs text-gray-500 line-clamp-2 min-h-[32px]">
+                  {c.events[0] ? c.events[0].headline : 'Nothing to report.'}
+                </div>
+              </button>
+            ) : <div key={i} className="card p-5 h-[172px]" />)}
+          </div>
+        </section>
+      );
+    }
+
+    // =====================================================================
+    // MAP
+    // =====================================================================
+    const SHIP_COLORS = {
+      tanker: '#F87171', cargo: '#34D399', passenger: '#60A5FA', fishing: '#FBBF24', tug: '#A78BFA',
+      military: '#F472B6', special: '#22D3EE', pleasure: '#E879F9', other: '#9CA3AF', unknown: '#6B7280',
+    };
+    const SHIP_LABEL = {
+      tanker: 'Tanker', cargo: 'Cargo', passenger: 'Passenger', fishing: 'Fishing', tug: 'Tug / towing',
+      military: 'Military', special: 'Special craft', pleasure: 'Pleasure', other: 'Other', unknown: 'Unknown',
+    };
+    const SHORT_NAME = { SUEZ: 'Suez', HORMUZ: 'Hormuz', BAB_EL_MANDEB: 'Bab-el-Mandeb', PANAMA: 'Panama', MALACCA: 'Malacca', CAPE_OF_GOOD_HOPE: 'Cape' };
+    const yesterdayUTC =() => new Date(Date.now() - 36 * 3600 * 1000).toISOString().slice(0, 10);
+    const BASEMAPS = {
+      dark: { label: 'Dark', make: () => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: 'Tiles &copy; Esri' }) },
+      ocean: { label: 'Ocean', make: () => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 13, attribution: 'Tiles &copy; Esri, GEBCO, NOAA' }) },
+      satellite: { label: 'Satellite', make: () => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 17, attribution: 'Imagery &copy; Esri, Maxar' }) },
+      nasa: { label: 'NASA today', make: () => L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${yesterdayUTC()}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, { maxNativeZoom: 9, maxZoom: 12, attribution: 'NASA GIBS / VIIRS (daily)' }) },
+      night: { label: 'Night lights', make: () => L.tileLayer('https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png', { maxNativeZoom: 8, maxZoom: 12, attribution: 'NASA Black Marble' }) },
+    };
+    const OVERLAYS = [
+      ['ships', 'Live ships (AIS)'],
+      ['traffic', 'Passage traffic vs normal'],
+      ['density', 'Shipping density (EU, EMODnet)'],
+      ['seamarks', 'Sea marks (OpenSeaMap)'],
+    ];
+
+    function shipPopup(v) {
+      const row = (k, val) => (val === null || val === undefined || val === '' ? '' : `<div><span style="color:#6B7280">${k}</span> ${escapeHtml(String(val))}</div>`);
+      return `<div style="font-weight:600;font-size:13px;margin-bottom:4px">${escapeHtml(v.name || 'Unnamed vessel')}</div>`
+        + row('Type', SHIP_LABEL[v.category] || v.category)
+        + row('Speed', v.sog != null ? `${v.sog.toFixed(1)} kn` : null)
+        + row('Course', v.cog != null ? `${Math.round(v.cog)}°` : null)
+        + row('Status', v.nav_status)
+        + row('Destination', v.destination)
+        + row('MMSI', v.mmsi)
+        + row('Last report', `${Math.round(v.age_s / 60)} min ago via ${v.source}`);
+    }
+
+    function MaritimeMap({ graph, chokes, routes, focus, setFocus, signals, online }) {
+      const elRef = useRef(null);
+      const mapRef = useRef(null);
+      const layers = useRef({});
+      const baseRef = useRef(null);
+      const [base, setBase] = useState('dark');
+      const [over, setOver] = useState({ ships: true, traffic: true, density: false, seamarks: false });
+      const [ais, setAis] = useState(null);
+      const [view, setView] = useState(0);
+
+      useEffect(() => {
+        if (!elRef.current || !window.L || mapRef.current) return;
+        const map = L.map(elRef.current, { center: [20, 40], zoom: 2, minZoom: 2, maxZoom: 12, zoomControl: false, scrollWheelZoom: false, worldCopyJump: true });
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        layers.current.renderer = L.canvas({ padding: 0.3 });
+        layers.current.density = L.tileLayer.wms('https://ows.emodnet-humanactivities.eu/wms', {
+          layers: 'emodnet:vesseldensity_all', format: 'image/png', transparent: true, opacity: 0.8, attribution: 'Vessel density &copy; EMODnet',
+        });
+        layers.current.seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, attribution: 'Sea marks &copy; OpenSeaMap' });
+        layers.current.ports = L.layerGroup().addTo(map);
+        layers.current.ships = L.layerGroup().addTo(map);
+        layers.current.traffic = L.layerGroup().addTo(map);
+        layers.current.routes = L.layerGroup().addTo(map);
+        layers.current.chokes = L.layerGroup().addTo(map);
+        map.on('click', () => map.scrollWheelZoom.enable());
+        map.on('mouseout', () => map.scrollWheelZoom.disable());
+        map.on('moveend', () => setView((n) => n + 1));
+        mapRef.current = map;
+        const t = setTimeout(() => map.invalidateSize(), 200);
+        const onResize = () => map.invalidateSize();
+        window.addEventListener('resize', onResize);
+        return () => { clearTimeout(t); window.removeEventListener('resize', onResize); map.remove(); mapRef.current = null; };
+      }, []);
+
+      useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        if (baseRef.current) map.removeLayer(baseRef.current);
+        baseRef.current = BASEMAPS[base].make().addTo(map);
+        baseRef.current.bringToBack();
+      }, [base]);
+
+      useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        ['density', 'seamarks'].forEach((k) => {
+          const lyr = layers.current[k];
+          if (over[k] && !map.hasLayer(lyr)) lyr.addTo(map);
+          if (!over[k] && map.hasLayer(lyr)) map.removeLayer(lyr);
+        });
+        if (!over.ships) { layers.current.ships.clearLayers(); setAis(null); }
+        if (!over.traffic) layers.current.traffic.clearLayers();
+      }, [over]);
+
+      // live AIS: poll the backend for vessels inside the current view
+      const fetchShips = useCallback(async () => {
+        const map = mapRef.current;
+        if (!map || online === false) return;
+        const b = map.getBounds();
+        const span = b.getEast() - b.getWest();
+        const qs = span >= 350 ? '' : `bbox=${[b.getSouth(), Math.max(-180, b.getWest()), b.getNorth(), Math.min(180, b.getEast())].map((x) => x.toFixed(3)).join(',')}&`;
+        try {
+          const data = await api(`/api/vessels?${qs}limit=5000`, {}, 15000);
+          setAis(data);
+          // the first request only starts the tracker; ask again once the first positions are in
+          if (data.tracked_total === 0) setTimeout(() => setView((n) => n + 1), 4000);
+        } catch {}
+      }, [online]);
+
+      useEffect(() => {
+        if (!over.ships) return;
+        fetchShips();
+        const t = setInterval(fetchShips, 15000);
+        return () => clearInterval(t);
+      }, [over.ships, fetchShips]);
+
+      useEffect(() => {
+        if (!over.ships) return;
+        const t = setTimeout(fetchShips, 400);
+        return () => clearTimeout(t);
+      }, [view]); // eslint-disable-line
+
+      useEffect(() => {
+        const g = layers.current.ships;
+        const map = mapRef.current;
+        if (!g || !map || !over.ships) return;
+        g.clearLayers();
+        if (!ais) return;
+        const renderer = layers.current.renderer;
+        const zoom = map.getZoom();
+        const lenDeg = 5 / Math.pow(2, zoom);
+        const showVectors = zoom >= 5;
+        ais.vessels.forEach((v) => {
+          const col = SHIP_COLORS[v.category] || SHIP_COLORS.unknown;
+          const moving = (v.sog || 0) >= 1 && v.cog != null;
+          if (moving && showVectors) {
+            const d = lenDeg * Math.min(1.6, 0.4 + v.sog / 15);
+            const rad = (v.cog * Math.PI) / 180;
+            const tip = [v.lat + d * Math.cos(rad), v.lng + (d * Math.sin(rad)) / Math.max(0.2, Math.cos((v.lat * Math.PI) / 180))];
+            L.polyline([[v.lat, v.lng], tip], { renderer, color: col, weight: 1.2, opacity: 0.85, interactive: false }).addTo(g);
+          }
+          L.circleMarker([v.lat, v.lng], { renderer, radius: moving ? 2.6 : 2, color: col, weight: 0, fillColor: col, fillOpacity: moving ? 0.95 : 0.55 })
+            .bindPopup(() => shipPopup(v), { maxWidth: 260 })
+            .addTo(g);
+        });
+      }, [ais, over.ships]);
+
+      // passage traffic bubbles (AIS transit counts vs normal)
+      useEffect(() => {
+        const g = layers.current.traffic;
+        if (!g) return;
+        g.clearLayers();
+        if (!over.traffic || !signals) return;
+        const idx = Object.fromEntries((graph?.nodes || []).map((n) => [n.id, n]));
+        signals.chokepoints.forEach((c) => {
+          const t = c.traffic, n = idx[c.id];
+          if (!t || !n) return;
+          const col = t.pct_vs_baseline <= -0.25 ? '#EF4444' : t.pct_vs_baseline <= -0.1 ? '#F59E0B' : '#10B981';
+          L.circleMarker([n.lat, n.lng], { radius: 8 + Math.sqrt(t.baseline_median) * 1.2, color: col, weight: 1, fillColor: col, fillOpacity: 0.08, dashArray: '3 3', interactive: false }).addTo(g);
+          L.circleMarker([n.lat, n.lng], { radius: 8 + Math.sqrt(t.recent_7d_mean) * 1.2, color: col, weight: 1.5, fillColor: col, fillOpacity: 0.18 })
+            .bindTooltip(`${SHORT_NAME[c.id] || n.name} ${t.recent_7d_mean.toFixed(0)}/d ${pct(t.pct_vs_baseline)}`, {
+              className: 'gc-traffic', permanent: true, direction: c.id === 'SUEZ' ? 'left' : 'right', offset: [c.id === 'SUEZ' ? -10 : 10, 0],
+            })
+            .addTo(g);
+        });
+      }, [signals, graph, over.traffic]);
+
+      useEffect(() => {
+        const g = layers.current.ports;
+        if (!g || !graph) return;
+        g.clearLayers();
+        graph.nodes.filter((n) => n.kind !== 'CHOKE').forEach((n) => {
+          L.circleMarker([n.lat, n.lng], { radius: 3, color: '#9CA3AF', weight: 1, fillColor: '#111827', fillOpacity: 1 })
+            .bindTooltip(n.name, { className: 'gc-tip', direction: 'top', offset: [0, -4] }).addTo(g);
+        });
+      }, [graph]);
+
+      useEffect(() => {
+        const g = layers.current.chokes;
+        if (!g || !chokes) return;
+        g.clearLayers();
+        chokes.forEach((c) => {
+          const s = STATUS[c.status];
+          L.circleMarker([c.lat, c.lng], { radius: 5, color: '#F3F4F6', weight: 1.5, fillColor: s.color, fillOpacity: 1 })
+            .bindTooltip(`${c.name} · ${s.label}`, { className: 'gc-tip', direction: 'top', offset: [0, -6] })
+            .on('click', (e) => { L.DomEvent.stopPropagation(e); setFocus(c.id); })
+            .addTo(g);
+        });
+      }, [chokes, setFocus]);
+
+      useEffect(() => {
+        if (!focus || !mapRef.current || !chokes) return;
+        const c = chokes.find((x) => x.id === focus);
+        if (c) mapRef.current.flyTo([c.lat, c.lng], 6, { duration: 0.8 });
+      }, [focus, chokes]);
+
+      useEffect(() => {
+        const g = layers.current.routes;
+        const map = mapRef.current;
+        if (!g || !map) return;
+        g.clearLayers();
+        if (!routes || !routes.safe_route) return;
+        const safe = routes.safe_route.geometry;
+        const direct = routes.commercial_route.geometry;
+        const converged = routes.comparison.converged;
+        if (!converged) {
+          L.polyline(direct, { color: '#F59E0B', weight: 2, opacity: 0.9, dashArray: '6 6' })
+            .bindTooltip('Fastest route', { className: 'gc-tip', sticky: true }).addTo(g);
+        }
+        L.polyline(safe, { color: '#10B981', weight: 3, opacity: 1 })
+          .bindTooltip(converged ? 'Recommended route' : 'Safest route', { className: 'gc-tip', sticky: true }).addTo(g);
+        const idx = Object.fromEntries((graph?.nodes || []).map((n) => [n.id, n]));
+        [routes.start, routes.end].forEach((id, i) => {
+          const n = idx[id];
+          if (!n) return;
+          L.circleMarker([n.lat, n.lng], { radius: 5, color: '#F3F4F6', weight: 2, fillColor: '#0B0F17', fillOpacity: 1 })
+            .bindTooltip(`${i === 0 ? 'Origin' : 'Destination'}: ${n.name}`, { className: 'gc-tip', permanent: true, direction: i === 0 ? 'left' : 'right', offset: [i === 0 ? -8 : 8, 0] })
+            .addTo(g);
+        });
+        const bounds = L.latLngBounds([...safe, ...direct]);
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 4 });
+      }, [routes, graph]);
+
+      const active = focus && chokes ? chokes.find((c) => c.id === focus) : null;
+      const zoneLive = active && ais?.zones?.[active.id];
+      const providers = ais ? Object.values(ais.providers) : [];
+      const presentCats = ais ? Object.keys(SHIP_COLORS).filter((k) => ais.vessels.some((v) => v.category === k)) : [];
+
+      return (
+        <div className="relative h-[600px] rounded-xl overflow-hidden border border-white/10">
+          <div ref={elRef} className="absolute inset-0" />
+          {!window.L && <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">The map library failed to load.</div>}
+
+          <div className="absolute left-3 top-3 z-[600] card px-4 py-3 w-[236px] space-y-3">
+            <div>
+              <div className="text-[11px] font-medium text-gray-500 mb-1.5">Base map</div>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(BASEMAPS).map(([k, b]) => (
+                  <button key={k} onClick={() => setBase(k)} className={`chip !py-1 ${base === k ? 't-safe' : 't-neutral hover:text-gray-200'}`}>{b.label}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] font-medium text-gray-500 mb-1">Layers</div>
+              {OVERLAYS.map(([k, label]) => (
+                <label key={k} className="layer-row">
+                  <input type="checkbox" checked={over[k]} onChange={(e) => setOver((o) => ({ ...o, [k]: e.target.checked }))} />
+                  <span>{label}</span>
+                  {k === 'ships' && over.ships && ais && <span className="mono text-gray-500 ml-auto">{fmtNum(ais.in_view)}</span>}
+                </label>
+              ))}
+            </div>
+            {over.ships && ais && (
+              <div className="border-t divider pt-2 space-y-1">
+                {providers.map((p) => (
+                  <div key={p.name} className="flex items-center gap-2 text-[11px] text-gray-500">
+                    <span className="chip-dot" style={{ background: p.state === 'connected' || p.state === 'polling' ? '#10B981' : p.state === 'no key' ? '#6B7280' : '#F59E0B' }} />
+                    <span className="truncate">{p.name}</span>
+                    <span className="ml-auto">{p.state === 'no key' ? 'add key' : p.state}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="absolute left-3 bottom-8 z-[500] card px-4 py-3 text-xs text-gray-400 space-y-2 pointer-events-none max-w-[calc(100%-90px)]">
+            <div className="flex items-center gap-3"><span className="inline-block w-7 h-[3px] rounded bg-[#10B981]" />Safest route<span className="inline-block w-7 border-t-2 border-dashed border-[#F59E0B] ml-2" />Fastest route</div>
+            <div className="flex items-center gap-4">
+              {['CRITICAL', 'ELEVATED', 'NORMAL'].map((k) => (
+                <span key={k} className="flex items-center gap-1.5"><span className="chip-dot" style={{ background: STATUS[k].color }} />{STATUS[k].label}</span>
+              ))}
+            </div>
+            {over.ships && presentCats.length > 0 && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1 border-t divider">
+                {presentCats.map((k) => <span key={k} className="flex items-center gap-1.5"><span className="chip-dot" style={{ background: SHIP_COLORS[k] }} />{SHIP_LABEL[k]}</span>)}
+              </div>
+            )}
+          </div>
+
+          {active && (
+            <div className="absolute top-3 right-3 z-[1000] w-[min(360px,calc(100%-24px))] max-h-[calc(100%-24px)] overflow-y-auto card">
+              <div className="px-5 pt-4 pb-3 border-b divider flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-base font-semibold text-gray-100">{active.name}</div>
+                  <div className="mono text-xs text-gray-500 mt-1">{active.lat.toFixed(2)}°, {active.lng.toFixed(2)}°</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusChip status={active.status} />
+                  <button className="btn btn-sm btn-quiet" onClick={() => setFocus(null)} aria-label="Close">Close</button>
+                </div>
+              </div>
+              <div className="px-5 py-4 space-y-4">
+                <p className="text-sm text-gray-300 leading-relaxed">{active.strategic_relevance}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><div className="text-xs text-gray-500">Risk now</div><div className="mono text-sm text-gray-100 mt-0.5">{active.effective_risk.toFixed(1)} / 10</div></div>
+                  <div><div className="text-xs text-gray-500">Disruption probability</div><div className="mono text-sm text-gray-100 mt-0.5">{active.fusion ? `${(active.fusion.posterior * 100).toFixed(0)}%` : '--'}</div></div>
+                  {active.traffic && <div><div className="text-xs text-gray-500">Transits (7-day avg)</div><div className="mono text-sm text-gray-100 mt-0.5">{active.traffic.recent_7d_mean.toFixed(0)}/day <span className="text-gray-500">{pct(active.traffic.pct_vs_baseline)}</span></div></div>}
+                  {zoneLive && <div><div className="text-xs text-gray-500">Live AIS in range</div><div className="mono text-sm text-gray-100 mt-0.5">{zoneLive.vessels} ships</div></div>}
+                </div>
+                <div className="space-y-3">
+                  <div className="text-xs font-medium text-gray-500">Latest news</div>
+                  {active.events.length === 0 && <div className="text-sm text-gray-500">Nothing reported here right now.</div>}
+                  {active.events.slice(0, 3).map((e) => (
+                    <div key={e.id} className="card-inner p-3 space-y-2">
+                      <div className="text-sm text-gray-200 leading-snug">{e.headline}</div>
+                      <div className="text-xs text-gray-400 leading-relaxed">{e.tactical_directive}</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-gray-500">{e.verified_citation?.publisher}{e.corroboration > 1 ? ` + ${e.corroboration - 1} more` : ''}</span>
+                        <SourceLink url={e.verified_citation?.url} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const EMBEDS = {
+      marinetraffic: { label: 'MarineTraffic', url: 'https://www.marinetraffic.com/en/ais/embed/zoom:3/centery:20/centerx:50/maptype:4/shownames:false/mmsi:0/shipid:0/fleet:/fleet_id:/vtypes:/showmenu:/remember:false', open: 'https://www.marinetraffic.com/en/ais/home/centerx:50/centery:20/zoom:3' },
+      vesselfinder: { label: 'VesselFinder', url: 'https://www.vesselfinder.com/aismap?zoom=3&lat=20&lon=50&width=100%25&height=600&names=false&track=false&fleet=false&store_pos=false', open: 'https://www.vesselfinder.com/?p=3&lat=20&lon=50' },
+      windy: { label: 'Wind & waves (Windy)', url: 'https://embed.windy.com/embed.html?type=map&location=coordinates&metricWind=kt&metricTemp=%C2%B0C&zoom=3&overlay=waves&product=ecmwf&level=surface&lat=20&lon=50', open: 'https://www.windy.com/-Waves-waves?waves,20,50,3' },
+    };
+
+    function MapPanel(props) {
+      const [tab, setTab] = useState('risk');
+      const embed = EMBEDS[tab];
+      return (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-1">
+            <button className={`tab ${tab === 'risk' ? 'on' : ''}`} onClick={() => setTab('risk')}>Risk map + live AIS</button>
+            {Object.entries(EMBEDS).map(([k, e]) => <button key={k} className={`tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>{e.label}</button>)}
+            {embed && <a href={embed.open} target="_blank" rel="noopener noreferrer" className="src-link ml-auto">Open {embed.label} in a new tab ↗</a>}
+          </div>
+          {tab === 'risk' && <MaritimeMap {...props} />}
+          {embed && (
+            <div className="relative h-[600px] rounded-xl overflow-hidden border border-white/10 bg-[#111827]">
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500 px-6 text-center">
+                Loading {embed.label}… If it stays blank, the provider is blocking embedding on your network — use the link above.
+              </div>
+              <iframe key={tab} src={embed.url} title={embed.label} className="absolute inset-0 w-full h-full" style={{ border: 0 }} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+            </div>
+          )}
+          {embed && tab !== 'windy' && (
+            <p className="text-xs text-gray-500">Free public embed from {embed.label}: global live AIS from their terrestrial and satellite receiver network. Shown as-is under the provider's terms.</p>
+          )}
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // ROUTE PLANNER
+    // =====================================================================
+    const PRESETS = [['SHANGHAI', 'ROTTERDAM'], ['DUBAI', 'NEW_YORK'], ['MUMBAI', 'LONDON'], ['TOKYO', 'NEW_YORK'], ['LONDON', 'SINGAPORE']];
+    const SCENARIOS = [
+      { id: '', label: 'Current situation' },
+      { id: 'HORMUZ:10', label: 'Strait of Hormuz closed' },
+      { id: 'SUEZ:10,BAB_EL_MANDEB:10', label: 'Red Sea and Suez closed' },
+      { id: 'PANAMA:9', label: 'Panama Canal drought' },
+      { id: 'MALACCA:9', label: 'Malacca piracy surge' },
+      { id: 'SUEZ:0,BAB_EL_MANDEB:0,HORMUZ:0,PANAMA:0,MALACCA:0', label: 'Everything calm' },
+    ];
+
+    function PathLine({ graph, path, hazards }) {
+      return (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          {path.map((n, i) => (
+            <React.Fragment key={i}>
+              <span className={hazards.includes(n) ? 'text-[#FCA5A5]' : 'text-gray-200'}>{nodeName(graph, n)}</span>
+              {i < path.length - 1 && <span className="text-gray-600">→</span>}
+            </React.Fragment>
+          ))}
+        </div>
+      );
+    }
+
+    function RouteCard({ graph, kind, route, comparison }) {
+      const safe = kind === 'safe';
+      const accent = safe ? '#10B981' : '#F59E0B';
+      const hazards = route.threat_exposure.map((t) => t.node);
+      const safetyTone = route.safety_index >= 70 ? '#6EE7B7' : route.safety_index >= 45 ? '#FCD34D' : '#FCA5A5';
+      return (
+        <div className="card p-6 flex flex-col gap-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {safe ? <span className="inline-block w-6 h-[3px] rounded" style={{ background: accent }} />
+                    : <span className="inline-block w-6 border-t-2 border-dashed" style={{ borderColor: accent }} />}
+              <div>
+                                <div className="text-base font-semibold text-gray-100">{safe ? 'Safest route' : 'Fastest route'}</div>
+              </div>
+            </div>
+            {safe && !comparison.converged && <span className="chip t-safe">Recommended</span>}
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <Metric label="Travel time" value={route.eta_days} unit="days" />
+            <Metric label="Distance" value={fmtNum(route.nautical_miles)} unit="nm" />
+            <Metric label="Safety score" value={route.safety_index} unit="/ 100" tone={safetyTone} />
+          </div>
+          <div className="bar"><span style={{ width: `${route.safety_index}%`, background: safetyTone }} /></div>
+          <div>
+            <div className="text-xs text-gray-500 mb-2">Path</div>
+            <PathLine graph={graph} path={route.path} hazards={hazards} />
+          </div>
+          <div>
+            <div className="text-xs text-gray-500 mb-2">{safe ? 'Hotspots avoided' : 'Hotspots crossed'}</div>
+            <div className="flex flex-wrap gap-2">
+              {safe && comparison.hazards_avoided.length === 0 && <span className="text-sm text-gray-500">None. Both routes take the same path.</span>}
+              {safe && comparison.hazards_avoided.map((h) => <span key={h.node} className="chip t-safe">{nodeName(graph, h.node)} <span className="mono">{h.severity}</span></span>)}
+              {!safe && route.threat_exposure.length === 0 && <span className="text-sm text-gray-500">None</span>}
+              {!safe && route.threat_exposure.map((h) => <span key={h.node} className={`chip ${bandFor(h.severity).tone}`}>{nodeName(graph, h.node)} <span className="mono">{h.severity}</span></span>)}
+            </div>
+            {safe && route.threat_exposure.length > 0 && (
+              <p className="text-xs text-gray-400 mt-3 leading-relaxed">
+                Still crosses {route.threat_exposure.map((t) => nodeName(graph, t.node)).join(', ')}. There is no way around it from this port.
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function RoutePlanner({ graph, routes, onCompute, online }) {
+      const [start, setStart] = useState('SHANGHAI');
+      const [end, setEnd] = useState('ROTTERDAM');
+      const [scenario, setScenario] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+      const autoRan = useRef(false);
+      const nodes = useMemo(() => (graph ? [...graph.nodes].sort((a, b) => a.name.localeCompare(b.name)) : []), [graph]);
+      const ports = nodes.filter((n) => n.kind === 'PORT');
+      const others = nodes.filter((n) => n.kind !== 'PORT');
+
+      const run = useCallback(async (s = start, e = end, sc = scenario) => {
+        if (s === e) { setError('Choose two different locations.'); return; }
+        setLoading(true); setError(null);
+        try { await onCompute(s, e, sc); }
+        catch (err) { setError(String(err.message || err)); }
+        setLoading(false);
+      }, [start, end, scenario, onCompute]);
+
+      useEffect(() => { if (graph && !autoRan.current) { autoRan.current = true; run('SHANGHAI', 'ROTTERDAM', ''); } }, [graph, run]);
+
+      const options = (
+        <>
+          <optgroup label="Ports">{ports.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}</optgroup>
+          <optgroup label="Sea passages">{others.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}</optgroup>
+        </>
+      );
+      const cmp = routes?.comparison;
+
+      return (
+        <div className="space-y-6">
+          <div className="card p-6 space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1.2fr_auto] gap-4 items-end">
+              <div><label className="label">Origin</label><select className="field" value={start} onChange={(e) => setStart(e.target.value)}>{options}</select></div>
+              <div><label className="label">Destination</label><select className="field" value={end} onChange={(e) => setEnd(e.target.value)}>{options}</select></div>
+              <div>
+                <label className="label">What if</label>
+                <select className="field" value={scenario} onChange={(e) => setScenario(e.target.value)}>
+                  {SCENARIOS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              </div>
+              <button className="btn btn-primary" disabled={loading || !graph || online === false} onClick={() => run()}>
+                {loading && <span className="spinner" />}{loading ? 'Finding routes' : 'Compare routes'}
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-500 mr-1">Popular routes</span>
+              {PRESETS.map(([s, e]) => (
+                <button key={s + e} className="btn btn-sm btn-quiet" disabled={loading || !graph}
+                  onClick={() => { setStart(s); setEnd(e); run(s, e, scenario); }}>
+                  {nodeName(graph, s)} → {nodeName(graph, e)}
+                </button>
+              ))}
+            </div>
+            {error && <div className="text-sm text-[#FCA5A5]">{error}</div>}
+          </div>
+
+          {routes && routes.safe_route && (
+            <>
+              <div className={`card px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 ${cmp.converged ? '' : 'border-[rgba(16,185,129,0.3)]'}`}>
+                <p className="text-sm text-gray-200">{cmp.verdict}</p>
+                <div className="flex gap-6 text-sm text-gray-400 shrink-0">
+                  <span>Time <span className="mono text-gray-100">{cmp.delta_eta_days >= 0 ? '+' : ''}{cmp.delta_eta_days} d</span></span>
+                  <span>Distance <span className="mono text-gray-100">{cmp.delta_nautical_miles >= 0 ? '+' : ''}{fmtNum(cmp.delta_nautical_miles)} nm</span></span>
+                  <span>Safety <span className="mono text-[#6EE7B7]">{cmp.delta_safety >= 0 ? '+' : ''}{cmp.delta_safety}</span></span>
+                </div>
+              </div>
+              {Object.keys(routes.override || {}).length > 0 && (
+                <p className="text-xs text-gray-500">What-if applied: {Object.entries(routes.override).map(([k, v]) => `${nodeName(graph, k)} at risk ${v}/10`).join(', ')}.</p>
+              )}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <RouteCard graph={graph} kind="safe" route={routes.safe_route} comparison={cmp} />
+                <RouteCard graph={graph} kind="direct" route={routes.commercial_route} comparison={cmp} />
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // THREAT INTELLIGENCE
+    // =====================================================================
+    function IntelCard({ e, onTarget }) {
+      const baseline = e.source_mode === 'BASELINE';
+      return (
+        <article className="card p-6 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <SeverityChip severity={e.threat_severity} />
+            {e.choke_point_targeted !== 'NONE'
+              ? <button className="chip t-neutral hover:text-gray-100 hover:border-white/30" onClick={() => onTarget(e.choke_point_targeted)}>{titleCase(e.choke_point_targeted)}</button>
+              : <span className="chip t-neutral">General</span>}
+            <span className="text-xs text-gray-500">{EVENT_LABEL[e.event_type] || titleCase(e.event_type)}</span>
+            {e.corroboration > 1 && <span className="chip t-neutral ml-auto" title="Distinct outlets reporting this story">{e.corroboration} outlets</span>}
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-gray-100 leading-snug">{e.headline}</h3>
+            <p className="text-sm text-gray-400 leading-relaxed mt-2 line-clamp-3">{e.summary}</p>
+          </div>
+          <div className="card-inner px-4 py-3">
+            <div className="text-xs font-medium text-gray-500 mb-1">What to do</div>
+            <div className="text-sm text-gray-200 leading-relaxed">{e.tactical_directive}</div>
+            {e.analyst_note && e.analysis_engine?.startsWith('GEMINI') && <div className="text-xs text-gray-500 mt-2 leading-relaxed">{e.analyst_note}</div>}
+          </div>
+          {e.coverage?.length > 1 && (
+            <details className="text-xs">
+              <summary className="text-gray-400 hover:text-gray-200">Also reported by {e.coverage.slice(1).map((c) => c.publisher).slice(0, 4).join(', ')}{e.coverage.length > 5 ? '…' : ''}</summary>
+              <ul className="mt-2 space-y-1.5">
+                {e.coverage.slice(1).map((c, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3">
+                    <span className="text-gray-400 leading-snug"><span className="text-gray-300">{c.publisher}:</span> {c.title}</span>
+                    <SourceLink url={c.url} />
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <div className="flex items-center justify-between gap-3 mt-auto">
+            <span className="text-xs text-gray-500">
+              {e.verified_citation?.publisher}
+              {e.verified_citation?.published_timestamp ? ` · ${relTime(e.verified_citation.published_timestamp)}` : ''}
+              {baseline ? ' · sample' : e.analysis_engine?.startsWith('GEMINI') ? ' · AI analyst' : ' · rule engine'}
+            </span>
+            <SourceLink url={e.verified_citation?.url} />
+          </div>
+        </article>
+      );
+    }
+
+    function SourceStatus({ intel }) {
+      const groups = [
+        ['News', intel.sources.map((s) => ({ name: s.publisher, ok: s.ok, info: s.ok ? `${s.items} items` : s.error }))],
+        ['Ship traffic (IMF PortWatch AIS)', (intel.traffic_sources || []).map((s) => ({ name: titleCase(s.node), ok: s.ok, info: s.ok ? `${s.days} days` : s.error }))],
+        ['Markets (Yahoo Finance)', (intel.market_sources || []).map((s) => ({ name: s.symbol, ok: s.ok, info: s.ok ? `${s.points} days` : s.error }))],
+      ];
+      const count = (g) => `${g.filter((x) => x.ok).length}/${g.length}`;
+      return (
+        <details className="card">
+          <summary className="px-5 py-3 text-sm text-gray-300 hover:text-gray-100 flex flex-wrap gap-x-4 gap-y-1">
+            <span>Data sources</span>
+            {groups.map(([label, g]) => <span key={label} className="text-xs text-gray-500">{label.split(' (')[0]} <span className="mono text-gray-300">{count(g)}</span></span>)}
+            {intel.sweep_s != null && <span className="text-xs text-gray-500 ml-auto">fetched in <span className="mono">{intel.sweep_s}s</span></span>}
+          </summary>
+          <div className="border-t divider px-5 py-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+            {groups.map(([label, g]) => (
+              <div key={label}>
+                <div className="text-xs font-medium text-gray-500 mb-2">{label}</div>
+                <ul className="space-y-1">
+                  {g.map((x, i) => (
+                    <li key={i} className="flex items-center gap-2 text-xs">
+                      <span className="chip-dot" style={{ background: x.ok ? '#10B981' : '#EF4444' }} />
+                      <span className="text-gray-300 truncate">{x.name}</span>
+                      <span className="text-gray-500 ml-auto shrink-0">{x.info}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </details>
+      );
+    }
+
+    function Intelligence({ intel, ingesting, onIngest, onTarget, online }) {
+      const [showLow, setShowLow] = useState(false);
+      const events = intel?.events || [];
+      const main = events.filter((e) => e.threat_severity >= 3);
+      const low = events.filter((e) => e.threat_severity < 3);
+      const live = intel?.mode === 'LIVE';
+      return (
+        <Section id="intelligence" title="Latest news"
+          description="Shipping news from trade press and wire services. Articles about the same event are grouped into one story, so you see how many outlets confirm it, and each story is rated for how much it threatens the main sea passages."
+          actions={
+            <button className="btn btn-primary" onClick={onIngest} disabled={ingesting || online === false}>
+              {ingesting && <span className="spinner" />}{ingesting ? 'Loading news, traffic and prices' : 'Get latest data'}
+            </button>
+          }>
+          {intel && (
+            <div className="space-y-3">
+              <div className="text-sm text-gray-400">
+                {live
+                  ? <>Updated {relTime(intel.scanned_at)}: {fmtNum(intel.articles_ingested)} articles read, {intel.stories_found} stories found{intel.engine === 'GEMINI' ? `, rated by ${intel.model}` : ', rated by the rule engine'}.</>
+                  : 'Showing sample reports until you load the latest data.'}
+                {intel.llm_note && <div className="text-xs text-gray-500 mt-1">{intel.llm_note}</div>}
+              </div>
+              {live && <SourceStatus intel={intel} />}
+            </div>
+          )}
+          {!intel && <div className="card p-10 text-center text-sm text-gray-500">Loading news…</div>}
+          {intel && main.length === 0 && <div className="card p-10 text-center text-sm text-gray-500">No shipping threats in the latest news.</div>}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {main.map((e) => <IntelCard key={e.id} e={e} onTarget={onTarget} />)}
+          </div>
+          {low.length > 0 && (
+            <div className="card">
+              <button className="w-full px-6 py-4 flex items-center justify-between text-sm text-gray-300 hover:text-gray-100" onClick={() => setShowLow((v) => !v)}>
+                <span>Other stories ({low.length})</span><span className="text-xs text-gray-500">{showLow ? 'Hide' : 'Show'}</span>
+              </button>
+              {showLow && (
+                <ul className="border-t divider divide-y divide-white/5">
+                  {low.map((e) => (
+                    <li key={e.id} className="px-6 py-3 flex items-center justify-between gap-4">
+                      <span className="text-sm text-gray-400 truncate">{e.headline}</span>
+                      <SourceLink url={e.verified_citation?.url} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </Section>
+      );
+    }
+
+    // =====================================================================
+    // SIGNALS: EVIDENCE FUSION + TRAFFIC ANOMALY / FORECAST
+    // =====================================================================
+    function TrafficChart({ t }) {
+      const W = 360, H = 130, m = { l: 30, r: 8, t: 10, b: 18 };
+      const s = t.series, f = t.forecast;
+      const n = s.length + f.length;
+      const ymax = Math.max(...s.map((p) => p.total), ...f.map((p) => p.hi), t.baseline_median) * 1.08 || 1;
+      const x = (i) => m.l + (i / (n - 1)) * (W - m.l - m.r);
+      const y = (v) => H - m.b - (v / ymax) * (H - m.t - m.b);
+      const ma = s.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.ma7).toFixed(1)}`).join('');
+      const fx = (i) => x(s.length - 1 + i + 1);
+      const fMean = `M${x(s.length - 1).toFixed(1)},${y(s[s.length - 1].ma7).toFixed(1)}` + f.map((p, i) => `L${fx(i).toFixed(1)},${y(p.mean).toFixed(1)}`).join('');
+      const band = f.map((p, i) => `${i ? 'L' : 'M'}${fx(i).toFixed(1)},${y(p.hi).toFixed(1)}`).join('')
+        + [...f].reverse().map((p, j) => `L${fx(f.length - 1 - j).toFixed(1)},${y(p.lo).toFixed(1)}`).join('') + 'Z';
+      const col = t.pct_vs_baseline <= -0.25 ? '#EF4444' : t.pct_vs_baseline <= -0.1 ? '#F59E0B' : '#10B981';
+      return (
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Daily transits with forecast">
+          {[0, 0.5, 1].map((g) => (
+            <g key={g}>
+              <line x1={m.l} x2={W - m.r} y1={y(ymax * g)} y2={y(ymax * g)} stroke="rgba(255,255,255,0.05)" />
+              <text x={m.l - 5} y={y(ymax * g) + 3} textAnchor="end" fontSize="9" fill="#6B7280" fontFamily="JetBrains Mono">{Math.round(ymax * g)}</text>
+            </g>
+          ))}
+          {s.map((p, i) => <circle key={i} cx={x(i)} cy={y(p.total)} r="0.9" fill="#4B5563" />)}
+          <line x1={m.l} x2={W - m.r} y1={y(t.baseline_median)} y2={y(t.baseline_median)} stroke="#9CA3AF" strokeDasharray="3 3" strokeOpacity="0.6" />
+          <text x={W - m.r} y={y(t.baseline_median) - 3} textAnchor="end" fontSize="9" fill="#9CA3AF">normal {t.baseline_median.toFixed(0)}</text>
+          <path d={band} fill={col} fillOpacity="0.12" />
+          <path d={ma} fill="none" stroke={col} strokeWidth="1.8" />
+          <path d={fMean} fill="none" stroke={col} strokeWidth="1.5" strokeDasharray="4 3" />
+          <line x1={x(s.length - 1)} x2={x(s.length - 1)} y1={m.t} y2={H - m.b} stroke="rgba(255,255,255,0.12)" />
+          <text x={m.l} y={H - 4} fontSize="9" fill="#6B7280">{s[0].date}</text>
+          <text x={x(s.length - 1)} y={H - 4} fontSize="9" fill="#6B7280" textAnchor="middle">{t.as_of}</text>
+          <text x={W - m.r} y={H - 4} fontSize="9" fill="#6B7280" textAnchor="end">+14 d</text>
+        </svg>
+      );
+    }
+
+    function EvidenceBars({ evidence }) {
+      const max = 4;
+      return (
+        <div className="space-y-2">
+          {evidence.map((e) => {
+            const w = Math.min(1, Math.abs(e.llr) / max) * 50;
+            const up = e.llr > 0;
+            return (
+              <div key={e.source} title={e.detail}>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-300">{e.label}</span>
+                  <span className="mono" style={{ color: up ? '#FCA5A5' : '#6EE7B7' }}>{e.llr >= 0 ? '+' : ''}{e.llr.toFixed(2)}</span>
+                </div>
+                <div className="relative h-[5px] mt-1 rounded bg-white/5">
+                  <span className="absolute top-0 bottom-0 w-px bg-white/20" style={{ left: '50%' }} />
+                  <span className="absolute top-0 bottom-0 rounded" style={{ left: up ? '50%' : `${50 - w}%`, width: `${w}%`, background: up ? '#EF4444' : '#10B981' }} />
+                </div>
+                <div className="text-[11px] text-gray-500 mt-1 leading-snug">{e.detail}</div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    function Signals({ signals }) {
+      const rows = signals?.chokepoints || [];
+      const [open, setOpen] = useState(false);
+      return (
+        <Section id="signals" title="Why each passage is rated the way it is"
+          description="Each risk score combines independent evidence: the passage's usual danger, news reports (weighted by how many outlets confirm them), daily ship transits from AIS compared with normal, ships diverting around the Cape, and market prices. Red bars push risk up, green bars pull it down.">
+          {!signals && <div className="card p-10 text-center text-sm text-gray-500">Loading…</div>}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {rows.map((c) => {
+              const f = c.fusion, t = c.traffic;
+              const band = f ? bandFor(f.risk) : null;
+              return (
+                <div key={c.id} className="card p-6 flex flex-col gap-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-base font-semibold text-gray-100">{c.name}</div>
+                      {f && <div className="text-xs text-gray-500 mt-1">Disruption probability <span className="mono text-gray-300">{(f.posterior * 100).toFixed(0)}%</span> · {f.confidence} confidence</div>}
+                      {!f && <div className="text-xs text-gray-500 mt-1">Traffic reference: diversions around Africa</div>}
+                    </div>
+                    {f && <span className={`chip ${band.tone}`}><span className="mono">{f.risk.toFixed(1)}</span>/10</span>}
+                  </div>
+                  {f && <EvidenceBars evidence={f.evidence} />}
+                  {t && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-400">Daily transits, 7-day average and 14-day forecast</span>
+                        {t.anomaly && <span className="chip t-crit !py-0.5">Unusual</span>}
+                      </div>
+                      <TrafficChart t={t} />
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div><div className="text-gray-500">Now</div><div className="mono text-gray-200">{t.recent_7d_mean.toFixed(0)}/day</div></div>
+                        <div><div className="text-gray-500">vs normal</div><div className="mono text-gray-200">{pct(t.pct_vs_baseline)}</div></div>
+                        <div><div className="text-gray-500">Tankers</div><div className="mono text-gray-200">{pct(t.tanker_pct_vs_baseline)}</div></div>
+                      </div>
+                    </div>
+                  )}
+                  {!t && <div className="text-xs text-gray-500">Load the latest data to add ship-traffic evidence.</div>}
+                </div>
+              );
+            })}
+          </div>
+          {signals && (
+            <div className="card">
+              <button className="w-full px-6 py-4 flex items-center justify-between text-sm text-gray-300 hover:text-gray-100" onClick={() => setOpen((v) => !v)}>
+                <span>How the score is calculated</span><span className="text-xs text-gray-500">{open ? 'Hide' : 'Show'}</span>
+              </button>
+              {open && (
+                <div className="border-t divider px-6 py-4 space-y-2 text-xs text-gray-400">
+                  {Object.entries(signals.fusion_model).map(([k, v]) => (
+                    <div key={k} className="grid grid-cols-[96px_1fr] gap-3"><span className="text-gray-500 capitalize">{k}</span><span className="mono text-gray-300 break-words">{v}</span></div>
+                  ))}
+                  <div className="grid grid-cols-[96px_1fr] gap-3"><span className="text-gray-500">Forecast</span><span className="mono text-gray-300">Holt linear exponential smoothing; alpha, beta fitted per passage by grid search on one-step-ahead error; 80% band</span></div>
+                </div>
+              )}
+            </div>
+          )}
+        </Section>
+      );
+    }
+
+    // =====================================================================
+    // MARKETS
+    // =====================================================================
+    function Sparkline({ data, color }) {
+      if (!data || data.length < 2) return null;
+      const W = 160, H = 36;
+      const lo = Math.min(...data), hi = Math.max(...data), r = hi - lo || 1;
+      const d = data.map((v, i) => `${i ? 'L' : 'M'}${((i / (data.length - 1)) * W).toFixed(1)},${(H - 2 - ((v - lo) / r) * (H - 4)).toFixed(1)}`).join('');
+      return <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-9" preserveAspectRatio="none" aria-hidden="true"><path d={d} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" /></svg>;
+    }
+
+    const MARKET_GROUPS = [
+      ['Energy', ['BRENT', 'TTF', 'HH']],
+      ['Freight and shipping', ['TANKER_FRT', 'BULK_FRT', 'CONT_EQ', 'TANK_EQ']],
+      ['Grains and metals', ['WHEAT', 'SOY', 'CORN', 'CU', 'AL', 'FE']],
+    ];
+
+    function Markets({ markets }) {
+      const by = Object.fromEntries((markets?.series || []).map((s) => [s.code, s]));
+      const loaded = markets?.series?.some((s) => s.stats);
+      return (
+        <Section id="markets" title="Markets"
+          description="Daily prices for the energy, freight and raw materials most exposed to the passages. Shown over the last 90 trading days; the badge shows how far today's price is from its 3-month average, in standard deviations.">
+          {!loaded && <div className="card p-10 text-center text-sm text-gray-500">Load the latest data to pull market prices.</div>}
+          {loaded && MARKET_GROUPS.map(([g, codes]) => (
+            <div key={g} className="space-y-3">
+              <div className="text-xs font-medium text-gray-500">{g}</div>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                {codes.map((c) => by[c]).filter((s) => s && s.stats).map((s) => {
+                  const st = s.stats;
+                  const up = (st.ret_1m || 0) >= 0;
+                  const z = st.z_score_3m;
+                  return (
+                    <div key={s.code} className="card p-4 flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-sm text-gray-200 leading-snug">{s.name}</div>
+                        <span className={`chip !py-0.5 ${Math.abs(z) >= 1.5 ? (z > 0 ? 't-crit' : 't-safe') : 't-neutral'}`}><span className="mono">{z >= 0 ? '+' : ''}{z.toFixed(1)}σ</span></span>
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="mono text-lg text-gray-100">{fmtPrice(st.last)}</span>
+                        <span className="text-[11px] text-gray-500">{s.unit}</span>
+                      </div>
+                      <Sparkline data={st.spark} color={up ? '#F87171' : '#34D399'} />
+                      <div className="flex justify-between text-[11px] text-gray-500">
+                        <span>1 m <span className="mono" style={{ color: up ? '#FCA5A5' : '#6EE7B7' }}>{pct(st.ret_1m, 1)}</span></span>
+                        <span>vol <span className="mono text-gray-300">{(st.vol_30d_ann * 100).toFixed(0)}%</span></span>
+                        <span className="mono">{st.as_of}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {loaded && <p className="text-xs text-gray-500">Prices: Yahoo Finance daily closes (futures, freight ETFs and shipping equities). Delayed; for analysis only.</p>}
+        </Section>
+      );
+    }
+
+    // =====================================================================
+    // CHAT WIDGET (floating button + pop-up panel)
+    // =====================================================================
+    const SUGGESTIONS = [
+      'Is it safe to send an LNG tanker from Dubai to Rotterdam this week?',
+      'How much ship traffic is going through Hormuz?',
+      'Why is the Red Sea rated so high?',
+      'What happens to oil tankers if Hormuz closes?',
+      'What are oil and freight markets doing?',
+      'Which goods are most at risk?',
+    ];
+    const TOOL_LABEL = {
+      get_chokepoint_risk: 'Risk evidence', compare_routes: 'Route search', search_news: 'News search',
+      get_ship_traffic: 'Ship traffic', get_market_data: 'Market data', get_goods_at_risk: 'Goods at risk',
+    };
+
+    function ChatIcon({ size = 24 }) {
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.2 3.6c-.5.4-1.3.1-1.3-.6V16A2.5 2.5 0 0 1 4 13.5v-8Z"
+            stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+          <path d="M8.5 8.5h7M8.5 11.5h4.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
+      );
+    }
+
+    function CloseIcon({ size = 20 }) {
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
+    }
+
+    function ChatWidget({ online, open, setOpen }) {
+      const [messages, setMessages] = useState([]);
+      const [input, setInput] = useState('');
+      const [busy, setBusy] = useState(false);
+      const listRef = useRef(null);
+      const inputRef = useRef(null);
+
+      useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [messages, busy, open]);
+      useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 50); }, [open]);
+      useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [setOpen]);
+
+      const send = async (text, preset = false) => {
+        const cmd = (text ?? input).trim();
+        if (!cmd || busy) return;
+        setMessages((m) => [...m, { role: 'user', text: cmd }]);
+        setInput('');
+        setBusy(true);
+        try {
+          const data = await api('/api/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: cmd, preset }),
+          }, 45000);
+          setMessages((m) => [...m, { role: 'ai', text: data.response || 'No answer was returned.', engine: data.engine, tools: data.tools_used || [], note: data.note }]);
+        } catch (err) {
+          setMessages((m) => [...m, { role: 'err', text: "Couldn't reach the server. Make sure backend.py is running, then try again." }]);
+        }
+        setBusy(false);
+      };
+
+      return (
+        <>
+          {open && (
+            <div role="dialog" aria-label="Ask a question"
+              className="fixed z-[1300] right-4 sm:right-6 bottom-24 w-[calc(100vw-32px)] sm:w-[440px] h-[min(660px,calc(100vh-140px))] card flex flex-col overflow-hidden"
+              style={{ boxShadow: '0 24px 48px rgba(0,0,0,0.45)' }}>
+              <div className="px-5 py-4 border-b divider flex items-center justify-between gap-3 shrink-0">
+                <div>
+                  <div className="text-base font-semibold text-gray-100">Ask a question</div>
+                  <div className="text-xs text-gray-500 mt-0.5">AI analyst with live news, ship traffic, prices and routing</div>
+                </div>
+                <div className="flex items-center gap-1">
+                  {messages.length > 0 && <button className="btn btn-sm btn-quiet" onClick={() => setMessages([])} disabled={busy}>Clear</button>}
+                  <button className="btn btn-sm btn-quiet !px-2" onClick={() => setOpen(false)} aria-label="Close chat"><CloseIcon size={18} /></button>
+                </div>
+              </div>
+
+              <div ref={listRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+                {messages.length === 0 && (
+                  <div className="text-sm text-gray-500 space-y-3">
+                    <p>Ask anything about shipping routes and risk, or try one of these:</p>
+                    <div className="space-y-2">
+                      {SUGGESTIONS.map((q) => (
+                        <button key={q} onClick={() => send(q, true)} disabled={busy || online === false}
+                          className="card-inner w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-gray-100 hover:border-white/20 transition-colors">{q}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {messages.map((m, i) => (
+                  <div key={i}>
+                    {m.role === 'user' && (
+                      <div className="flex justify-end"><div className="max-w-[85%] bg-[#1F2937] rounded-2xl rounded-br-md px-4 py-2.5 text-sm text-gray-100">{m.text}</div></div>
+                    )}
+                    {m.role === 'ai' && (
+                      <div className="space-y-2">
+                        {m.tools?.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {m.tools.map((t, j) => (
+                              <span key={j} className="chip !py-0.5 !text-[11px] t-neutral" title={JSON.stringify(t.args)}>
+                                {TOOL_LABEL[t.tool] || t.tool}{t.args?.chokepoint ? `: ${titleCase(t.args.chokepoint)}` : t.args?.query ? `: "${t.args.query}"` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="md text-sm text-gray-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+                        <div className="text-[11px] text-gray-600">{m.engine === 'RULE_ENGINE' ? 'Answered by the built-in analyst' : m.engine}{m.note ? ` · ${m.note}` : ''}</div>
+                      </div>
+                    )}
+                    {m.role === 'err' && <div className="text-sm text-[#FCA5A5]">{m.text}</div>}
+                  </div>
+                ))}
+                {busy && <div className="flex items-center gap-2 text-sm text-gray-500"><span className="spinner" style={{ borderTopColor: '#9CA3AF', borderColor: 'rgba(255,255,255,.1)' }} />Working on it</div>}
+              </div>
+
+              {messages.length > 0 && (
+                <div className="px-5 py-3 border-t divider flex gap-2 overflow-x-auto shrink-0">
+                  {SUGGESTIONS.map((q) => <button key={q} className="btn btn-sm btn-quiet shrink-0" onClick={() => send(q, true)} disabled={busy}>{q}</button>)}
+                </div>
+              )}
+
+              <form className="px-4 py-3 border-t divider flex items-center gap-2 shrink-0" onSubmit={(e) => { e.preventDefault(); send(); }}>
+                <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} disabled={busy || online === false}
+                  className="field !border-transparent !bg-transparent focus:!border-transparent"
+                  placeholder="Type a question" />
+                <button className="btn btn-primary" type="submit" disabled={busy || !input.trim() || online === false}>Send</button>
+              </form>
+            </div>
+          )}
+
+          <button onClick={() => setOpen((v) => !v)} aria-label={open ? 'Close chat' : 'Open chat'}
+            className="fixed z-[1300] right-4 sm:right-6 bottom-6 w-14 h-14 rounded-full flex items-center justify-center bg-[#E5E7EB] text-[#0B0F17] hover:bg-white transition-colors"
+            style={{ boxShadow: '0 10px 28px rgba(0,0,0,0.45)' }}>
+            {open ? <CloseIcon size={22} /> : <ChatIcon size={24} />}
+          </button>
+        </>
+      );
+    }
+
+    // =====================================================================
+    // COMMODITY CLUSTERS (K-MEANS)
+    // =====================================================================
+    const CLUSTER = {
+      HIGH_SYSTEMIC_RISK: { label: 'High risk', tone: 't-crit', color: '#EF4444' },
+      ELEVATED_WATCH: { label: 'Watch', tone: 't-elev', color: '#F59E0B' },
+      STABLE_NORMAL_FLOW: { label: 'Stable', tone: 't-safe', color: '#10B981' },
+    };
+
+    function Scatter({ data }) {
+      const W = 420, H = 300, m = { l: 40, r: 16, t: 16, b: 36 };
+      const sx = (v) => m.l + (v / 100) * (W - m.l - m.r);
+      const sy = (v) => H - m.b - (v / 100) * (H - m.t - m.b);
+      return (
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Goods by price swings and supply strain">
+          {[0, 25, 50, 75, 100].map((g) => (
+            <g key={g}>
+              <line x1={sx(g)} x2={sx(g)} y1={m.t} y2={H - m.b} stroke="rgba(255,255,255,0.05)" />
+              <line x1={m.l} x2={W - m.r} y1={sy(g)} y2={sy(g)} stroke="rgba(255,255,255,0.05)" />
+              <text x={sx(g)} y={H - m.b + 16} textAnchor="middle" fontSize="10" fill="#6B7280" fontFamily="JetBrains Mono">{g}</text>
+              <text x={m.l - 8} y={sy(g) + 3} textAnchor="end" fontSize="10" fill="#6B7280" fontFamily="JetBrains Mono">{g}</text>
+            </g>
+          ))}
+          <text x={(W + m.l) / 2} y={H - 4} textAnchor="middle" fontSize="11" fill="#9CA3AF">Price swings</text>
+          <text x={12} y={(H - m.b + m.t) / 2} textAnchor="middle" fontSize="11" fill="#9CA3AF" transform={`rotate(-90 12 ${(H - m.b + m.t) / 2})`}>Supply strain</text>
+          {data.commodities.map((c) => {
+            const cl = data.clusters.find((k) => k.label === c.cluster);
+            const col = CLUSTER[c.cluster].color;
+            return (
+              <g key={c.code}>
+                {cl && <line x1={sx(c.volatility)} y1={sy(c.stress)} x2={sx(cl.centroid[0])} y2={sy(cl.centroid[1])} stroke={col} strokeOpacity="0.2" />}
+                <circle cx={sx(c.volatility)} cy={sy(c.stress)} r="4.5" fill={col} fillOpacity="0.9" stroke="#111827" strokeWidth="1">
+                  <title>{`${c.name}: price swings ${c.volatility}, supply strain ${c.stress}`}</title>
+                </circle>
+                <text x={sx(c.volatility) + 7} y={sy(c.stress) + 3.5} fontSize="10" fill="#9CA3AF" fontFamily="JetBrains Mono">{c.code}</text>
+              </g>
+            );
+          })}
+          {data.clusters.map((k) => {
+            const x = sx(k.centroid[0]), y = sy(k.centroid[1]), col = CLUSTER[k.label].color;
+            return (
+              <g key={k.label}>
+                <line x1={x - 7} x2={x + 7} y1={y} y2={y} stroke={col} strokeWidth="2" />
+                <line x1={x} x2={x} y1={y - 7} y2={y + 7} stroke={col} strokeWidth="2" />
+              </g>
+            );
+          })}
+        </svg>
+      );
+    }
+
+    function Commodities({ data, k, setK }) {
+      const rows = data ? [...data.commodities].sort((a, b) => (b.volatility + b.stress) - (a.volatility + a.stress)) : [];
+      return (
+        <Section id="commodities" title="Goods at risk"
+          description="Key goods and freight grouped by how much their prices are swinging (from market data) and how strained their supply is, given the risk at the passages their cargo uses."
+          actions={<div className="seg">{[2, 3].map((n) => <button key={n} className={k === n ? 'on' : ''} onClick={() => setK(n)}>{n} groups</button>)}</div>}>
+          {!data && <div className="card p-10 text-center text-sm text-gray-500">Loading…</div>}
+          {data && (
+            <>
+              <div className={`grid grid-cols-1 ${data.clusters.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
+                {data.clusters.map((cl) => (
+                  <div key={cl.label} className="card p-6 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className={`chip ${CLUSTER[cl.label].tone}`}>{CLUSTER[cl.label].label}</span>
+                      <span className="text-xs text-gray-500">{cl.size} items</span>
+                    </div>
+                    <div className="text-sm text-gray-300">{cl.members.join(', ')}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-6">
+                <div className="card overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-500 border-b divider">
+                        <th className="font-medium px-6 py-3">Item</th>
+                        <th className="font-medium px-4 py-3">Group</th>
+                        <th className="font-medium px-4 py-3 text-right">Price swings</th>
+                        <th className="font-medium px-4 py-3 text-right">Supply strain</th>
+                        <th className="font-medium px-6 py-3 text-right" title="Chance that at least one passage on this item's sea routes is disrupted (noisy-OR)">Supply hit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((c) => (
+                        <tr key={c.code} className="border-b divider last:border-0">
+                          <td className="px-6 py-3 text-gray-200">{c.name}</td>
+                          <td className="px-4 py-3"><span className="inline-flex items-center gap-2 text-xs text-gray-400"><span className="chip-dot" style={{ background: CLUSTER[c.cluster].color }} />{CLUSTER[c.cluster].label}</span></td>
+                          <td className="px-4 py-3 text-right mono text-gray-300">{c.volatility.toFixed(1)}</td>
+                          <td className="px-4 py-3 text-right mono text-gray-300">{c.stress.toFixed(1)}</td>
+                          <td className="px-6 py-3 text-right mono text-gray-300">{c.supply_hit_probability != null ? `${(c.supply_hit_probability * 100).toFixed(0)}%` : '--'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="card p-6 space-y-4">
+                  <Scatter data={data} />
+                  <p className="text-xs text-gray-500 leading-relaxed">{data.data_note} Grouping: k-means, silhouette <span className="mono">{data.silhouette}</span>.</p>
+                </div>
+              </div>
+            </>
+          )}
+        </Section>
+      );
+    }
+
+    // =====================================================================
+    // APP
+    // =====================================================================
+    function App() {
+      const [online, setOnline] = useState(null);
+      const [health, setHealth] = useState(null);
+      const [graph, setGraph] = useState(null);
+      const [chokes, setChokes] = useState(null);
+      const [intel, setIntel] = useState(null);
+      const [ingesting, setIngesting] = useState(false);
+      const [clusters, setClusters] = useState(null);
+      const [k, setK] = useState(2);
+      const [routes, setRoutes] = useState(null);
+      const [focus, setFocus] = useState(null);
+      const [chatOpen, setChatOpen] = useState(false);
+      const [signals, setSignals] = useState(null);
+      const [markets, setMarkets] = useState(null);
+      const lastRouteReq = useRef(null);
+      const kRef = useRef(2);
+
+      const ping = useCallback(async () => {
+        try { setHealth(await api('/api/health', {}, 6000)); setOnline(true); return true; }
+        catch { setOnline(false); return false; }
+      }, []);
+      const loadChokes = useCallback(async () => { try { setChokes((await api('/api/chokepoints')).chokepoints); } catch {} }, []);
+      const loadClusters = useCallback(async (kk) => { try { setClusters(await api(`/api/clusters?k=${kk ?? kRef.current}`)); } catch {} }, []);
+      const loadIntel = useCallback(async () => { try { setIntel(await api('/api/intelligence')); } catch {} }, []);
+      const loadGraph = useCallback(async () => { try { setGraph(await api('/api/graph')); } catch {} }, []);
+      const loadSignals = useCallback(async () => { try { setSignals(await api('/api/signals')); } catch {} }, []);
+      const loadMarkets = useCallback(async () => { try { setMarkets(await api('/api/markets')); } catch {} }, []);
+
+      const computeRoute = useCallback(async (start, end, override) => {
+        const qs = new URLSearchParams({ start, end, override: override || '' });
+        const data = await api(`/api/routes?${qs.toString()}`);
+        lastRouteReq.current = { start, end, override };
+        setRoutes(data);
+        return data;
+      }, []);
+
+        const bootstrap = useCallback(async () => {
+        if (!(await ping())) return;
+        await Promise.all([loadGraph(), loadChokes(), loadIntel(), loadClusters(), loadSignals(), loadMarkets()]);
+      }, [ping, loadGraph, loadChokes, loadIntel, loadClusters, loadSignals, loadMarkets]);
+
+      useEffect(() => { bootstrap(); }, [bootstrap]);
+
+        useEffect(() => {
+        const t = setInterval(async () => {
+          const wasDown = online === false || !graph;
+          const ok = await ping();
+          if (ok && wasDown) bootstrap();
+        }, 20000);
+        return () => clearInterval(t);
+      }, [online, graph, ping, bootstrap]);
+
+      useEffect(() => { kRef.current = k; loadClusters(k); }, [k, loadClusters]);
+
+      const ingest = useCallback(async () => {
+        setIngesting(true);
+        try {
+          setIntel(await api('/api/intelligence/ingest', { method: 'POST' }, 150000));
+          await Promise.all([loadChokes(), loadClusters(), loadSignals(), loadMarkets(), ping()]);
+          if (lastRouteReq.current) {
+            const { start, end, override } = lastRouteReq.current;
+            try { await computeRoute(start, end, override); } catch {}
+          }
+        } catch { setOnline(false); }
+        setIngesting(false);
+      }, [loadChokes, loadClusters, loadSignals, loadMarkets, ping, computeRoute]);
+
+      const selectChoke = useCallback((id) => {
+        setFocus(id);
+        document.getElementById('routing')?.scrollIntoView({ behavior: 'smooth' });
+      }, []);
+
+      return (
+        <div className="min-h-screen">
+          <Header online={online} intel={intel} onAsk={() => setChatOpen(true)} />
+          <main className="max-w-7xl mx-auto py-10 px-6 space-y-16">
+            {online === false && (
+              <div className="card px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-[rgba(239,68,68,0.3)]">
+                <div>
+                  <div className="text-sm font-medium text-[#FCA5A5]">Can't reach the server</div>
+                  <div className="text-sm text-gray-400 mt-1">Start it by running <span className="mono text-gray-200">python backend.py</span>, then open <span className="mono text-gray-200">http://localhost:8000</span>.</div>
+                </div>
+                <button className="btn" onClick={bootstrap}>Retry</button>
+              </div>
+            )}
+            <Overview chokes={chokes} intel={intel} onSelect={selectChoke} />
+            <Section id="routing" title="Map, live ships and routes"
+              description="Live AIS ship positions, passage traffic compared with normal, and the risk at each hotspot. Click a ship or hotspot for details, switch base maps and layers on the left, or open the global AIS and weather maps in the tabs. Pick two ports below to compare the safest route with the fastest one.">
+              <MapPanel graph={graph} chokes={chokes} routes={routes} focus={focus} setFocus={setFocus} signals={signals} online={online} />
+              <RoutePlanner graph={graph} routes={routes} onCompute={computeRoute} online={online} />
+            </Section>
+            <Signals signals={signals} />
+            <Intelligence intel={intel} ingesting={ingesting} onIngest={ingest} onTarget={selectChoke} online={online} />
+            <Markets markets={markets} />
+            <Commodities data={clusters} k={k} setK={setK} />
+          </main>
+          <footer className="border-t divider">
+            <div className="max-w-7xl mx-auto px-6 pr-24 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-gray-500">
+              <span>Global Chain AI</span>
+              <span>For demonstration only. Not for navigation.</span>
+            </div>
+          </footer>
+          <ChatWidget online={online} open={chatOpen} setOpen={setChatOpen} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+
+  <script>
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        var root = document.getElementById('root');
+        if (root && root.childNodes.length > 0) return;
+        var missing = [];
+        if (!window.React) missing.push('React 18.3.1');
+        if (!window.ReactDOM) missing.push('ReactDOM 18.3.1');
+        if (!window.L) missing.push('Leaflet 1.9.4');
+        if (!window.Babel) missing.push('Babel standalone 7.24.7');
+        if (!window.tailwind) missing.push('Tailwind CSS');
+        var box = document.getElementById('boot-error');
+        box.style.display = 'block';
+        box.innerHTML = '<div style="color:#F9FAFB;font-weight:600;margin-bottom:8px">The dashboard could not start</div>' +
+          (missing.length ? 'These libraries did not load: ' + missing.join(', ') + '. Check the internet connection or any network filter blocking unpkg.com or cdn.tailwindcss.com.' :
+            'The libraries loaded but the app did not mount. Open the browser console (F12) to see the error.');
+      }, 3500);
+    });
+  </script>
+</body>
+</html>
