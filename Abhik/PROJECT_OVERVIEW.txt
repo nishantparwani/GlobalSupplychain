@@ -1,0 +1,70 @@
+GLOBAL CHAIN AI - MARITIME RISK INTELLIGENCE & PATHFINDING (AI Project Overview)
+================================================================================
+
+WHAT IT IS
+An AI "rational agent" that watches world shipping. It reads live news, ship-traffic
+data and market prices, works out how dangerous the five key sea passages are (Suez,
+Hormuz, Bab-el-Mandeb, Panama, Malacca), recommends the safest sea route between
+ports, and answers questions through an AI chat assistant (Copilot).
+
+AGENT DESIGN (PEAS)
+  Sensors   : 12 news feeds (trade press + Google News), IMF PortWatch AIS transit
+              counts, Yahoo Finance prices, live AIS ship positions (aisstream.io,
+              Digitraffic)                  -> Yash/data_sources.py, Nishant/ais_live.py
+  Reasoning : AI models below               -> Nishant/, Yash/, Abhik/ (see FILES)
+  Actuators : route advice, risk map, news ratings, Copilot answers (web dashboard)
+
+AI TECHNIQUES USED
+  1. LLM (Google Gemini)  - reads the top news stories and returns a strict JSON threat
+     rating (passage, event type, severity 1-10, recommended action).
+  2. Rule-based expert system - 16 forward-chaining rules (R01-R16) rate news when
+     Gemini is unavailable; also gives an explainable rule trace.
+  3. A* search - finds routes on a 16-node sea graph. Cost = sailing days + canal wait
+     + risk penalty; heuristic = great-circle distance (admissible, checked at start).
+     "Safest" route includes risk, "fastest" route ignores it.
+  4. K-Means clustering (k-means++, silhouette score) - groups commodities (oil, LNG,
+     wheat, copper...) into High risk / Watch / Stable.
+  5. TF-IDF + cosine similarity - merges articles about the same event from different
+     outlets and acts as retrieval memory (RAG) for the Copilot.
+  6. Time-series analysis - change-point detection (least-squares split) finds a lasting
+     closure so "normal" traffic is measured from before it (Hormuz: break on 4 Mar 2026,
+     normal 88/day, now -96%); robust anomaly detection (median/MAD z-score) and a
+     Holt exponential-smoothing 14-day forecast.
+  7. Naive-Bayes evidence fusion - combines prior hazard, news, traffic drop, Cape
+     re-routing and market signals into a disruption probability per passage.
+  8. Noisy-OR model - chance that a commodity's supply is hit by any passage.
+  9. Tool-using Gemini agent - Copilot calls internal tools (routes, risk, news search)
+     and answers using only numbers from the platform.
+
+HOW IT FLOWS
+  User clicks "Get latest data" -> feeds/traffic/prices fetched in parallel -> articles
+  cleaned, ranked, clustered -> Gemini (or rule engine) rates threats -> Bayesian fusion
+  gives risk 0-10 per passage -> A* re-plans routes, K-Means re-groups goods -> dashboard
+  updates map, news, signals, markets and goods tables -> Copilot answers questions.
+
+FILES (one folder per team member)
+  run.py                      Entry point (python run.py)
+  Nishant/  core.py           Configuration, Gemini LLM engine, maritime graph, threat state
+            routing.py        A* search (safest / fastest route)
+            ais_live.py       Live ship-position tracker (WebSocket + polling)
+            server.py         FastAPI REST API, market ticker
+  Yash/     data_sources.py   News / PortWatch / market fetchers (timeouts, never crash)
+            intelligence.py   Relevance filter, 16-rule expert system, Gemini rating, ingestion
+            clustering.py     K-Means clustering of goods at risk
+  Abhik/    ai_models.py      TF-IDF, change point, anomaly score, Holt forecast, Bayes, noisy-OR
+            copilot.py        Rule-based analyst + tool-using Gemini agent
+            RESEARCH.md       Research brief: problem, Oct 2026 situation, validation
+  Harsh/    index.html        Dashboard (React + Leaflet + Tailwind), 7 pages
+            screenshots/      Images of the running project
+  .env                        GEMINI_API_KEY, GEMINI_MODEL, AISSTREAM_API_KEY (keep secret)
+
+RUN
+  pip install -r requirements.txt   then   python run.py
+  Open http://localhost:8000 (dashboard) or http://localhost:8000/docs (API)
+  Main APIs: /api/routes, /api/clusters, /api/intelligence(/ingest), /api/signals,
+             /api/markets, /api/ticker, /api/vessels, /api/chat
+
+RELIABILITY
+  Works without a Gemini key (rule engine takes over). No scraping or LLM calls on start
+  up; Gemini is rate-limited and pauses after quota errors. Educational project only -
+  not for real navigation or trading decisions.
