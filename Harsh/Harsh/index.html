@@ -1,0 +1,2111 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Global Chain AI</title>
+  <meta name="description" content="AI agent that identifies and analyses disruption risk at the world's maritime chokepoints." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script>
+    // theme before first paint (stored choice, else OS preference)
+    (function () {
+      var t = null;
+      try { t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('gc-theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <script src="https://cdn.tailwindcss.com/3.4.5"></script>
+  <script>
+    if (window.tailwind) tailwind.config = { corePlugins: { preflight: true }, theme: { extend: { fontFamily: { sans: ['IBM Plex Sans', 'system-ui', 'Segoe UI', 'sans-serif'], mono: ['IBM Plex Mono', 'ui-monospace', 'Consolas', 'monospace'] } } } };
+  </script>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+  <style>
+    :root, :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #060A10; --bg-2: #09101A;
+      --panel: #0D141F; --panel-2: #121B28; --panel-3: #182333;
+      --line: rgba(148, 163, 184, 0.12); --line-2: rgba(148, 163, 184, 0.22);
+      --ink: #E8EDF4; --ink-2: #A7B2C1; --muted: #707C8F;
+      --accent: #4CC3EE; --accent-ink: #04131B; --accent-soft: rgba(76, 195, 238, 0.12);
+      --crit: #F0545C; --crit-soft: rgba(240, 84, 92, 0.13);
+      --elev: #F2A93B; --elev-soft: rgba(242, 169, 59, 0.13);
+      --ok: #3CC583; --ok-soft: rgba(60, 197, 131, 0.13);
+      --grid: rgba(148, 163, 184, 0.10); --axis: rgba(148, 163, 184, 0.28);
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+      --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+      --map-bg: #15191F;
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #F2F4F7; --bg-2: #EBEEF2;
+      --panel: #FFFFFF; --panel-2: #F6F8FA; --panel-3: #EDF1F5;
+      --line: rgba(15, 23, 42, 0.09); --line-2: rgba(15, 23, 42, 0.17);
+      --ink: #0C1420; --ink-2: #445163; --muted: #778396;
+      --accent: #0B7AA6; --accent-ink: #FFFFFF; --accent-soft: rgba(11, 122, 166, 0.10);
+      --crit: #D23A43; --crit-soft: rgba(210, 58, 67, 0.10);
+      --elev: #B86E00; --elev-soft: rgba(214, 140, 20, 0.13);
+      --ok: #1E8A55; --ok-soft: rgba(30, 138, 85, 0.10);
+      --grid: rgba(15, 23, 42, 0.07); --axis: rgba(15, 23, 42, 0.22);
+      --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
+      --shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+      --map-bg: #E4E7EB;
+    }
+    html, body { background: var(--bg); color: var(--ink); margin: 0; overflow-x: clip; }
+    body { font-family: 'IBM Plex Sans', system-ui, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; font-size: 14px; }
+    .mono, .num { font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-variant-numeric: tabular-nums; }
+    a { color: inherit; text-decoration: none; }
+    ::selection { background: var(--accent-soft); }
+
+    /* shell */
+    .shell { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 100vh; }
+    .side { position: sticky; top: 0; height: 100vh; background: var(--bg-2); border-right: 1px solid var(--line); display: flex; flex-direction: column; z-index: 1200; }
+    .side-scrim { display: none; }
+    @media (max-width: 1023px) {
+      .shell { grid-template-columns: minmax(0, 1fr); }
+      .side { position: fixed; left: 0; top: 0; bottom: 0; width: 264px; transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--shadow); }
+      .side.open { transform: none; }
+      .side-scrim.open { display: block; position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 1150; }
+    }
+    .nav-item { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 8px; color: var(--ink-2); font-size: 14px; font-weight: 500; cursor: pointer; width: 100%; text-align: left; }
+    .nav-item:hover { background: var(--panel-2); color: var(--ink); }
+    .nav-item.on { background: var(--accent-soft); color: var(--ink); }
+    .nav-item.on svg { color: var(--accent); }
+    .nav-item svg { color: var(--muted); flex-shrink: 0; }
+    .nav-badge { margin-left: auto; font-size: 11px; font-family: 'IBM Plex Mono', monospace; padding: 1px 7px; border-radius: 999px; }
+
+    .topbar { position: sticky; top: 0; z-index: 1100; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+
+    /* surfaces */
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+    .panel-2 { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
+    .panel-hd { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    .panel-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+    .panel-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
+    .kicker { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    .hair { border-color: var(--line); }
+    .ink { color: var(--ink); } .ink-2 { color: var(--ink-2); } .muted { color: var(--muted); }
+
+    /* status pills: colour always paired with a label */
+    .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; line-height: 1; padding: 5px 9px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; }
+    .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .pill-crit { color: var(--crit); background: var(--crit-soft); border-color: color-mix(in srgb, var(--crit) 35%, transparent); }
+    .pill-elev { color: var(--elev); background: var(--elev-soft); border-color: color-mix(in srgb, var(--elev) 35%, transparent); }
+    .pill-ok { color: var(--ok); background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+    .pill-neutral { color: var(--ink-2); background: transparent; border-color: var(--line-2); }
+    .pill-accent { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line-2); color: var(--ink); background: var(--panel-2); cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s; }
+    .btn:hover:not(:disabled) { background: var(--panel-3); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+    .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 86%, white); }
+    .btn-ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
+    .btn-ghost:hover:not(:disabled) { background: var(--panel-2); color: var(--ink); }
+    .btn-sm { font-size: 12px; padding: 5px 10px; border-radius: 7px; }
+    .chipbtn { font-size: 12.5px; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); background: transparent; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+    .chipbtn:hover { color: var(--ink); border-color: var(--axis); }
+    .chipbtn.on { color: var(--ink); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+    .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }
+    .seg button { font-size: 12px; padding: 6px 12px; color: var(--ink-2); background: transparent; }
+    .seg button.on { background: var(--panel-3); color: var(--ink); }
+    .field { width: 100%; background: var(--panel-2); color: var(--ink); border: 1px solid var(--line-2); border-radius: 8px; font-size: 13.5px; padding: 9px 10px; outline: none; }
+    .field:focus { border-color: var(--accent); }
+    .label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
+    .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .track { height: 6px; border-radius: 3px; background: var(--panel-3); overflow: hidden; }
+    .track > span { display: block; height: 100%; border-radius: 3px; }
+    .src { font-size: 12px; color: var(--muted); border-bottom: 1px solid transparent; }
+    .src:hover { color: var(--ink); border-bottom-color: var(--line-2); }
+    .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .tbl th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    .tbl td { padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--ink-2); }
+    .tbl tr:last-child td { border-bottom: 0; }
+    .tbl tbody tr:hover td { background: var(--panel-2); }
+    .divide > * + * { border-top: 1px solid var(--line); }
+    .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .clamp3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .fade-in { animation: fade .25s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    details > summary { list-style: none; cursor: pointer; }
+    details > summary::-webkit-details-marker { display: none; }
+
+    /* chart tooltip */
+    .tip { position: absolute; pointer-events: none; z-index: 20; background: var(--panel-3); border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--ink); box-shadow: var(--shadow); white-space: nowrap; transform: translate(-50%, calc(-100% - 12px)); }
+    .tip .t-k { color: var(--muted); }
+
+    /* ticker */
+    .ticker { height: 32px; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--bg-2); position: relative; }
+    .ticker::before, .ticker::after { content: ''; position: absolute; top: 0; bottom: 0; width: 36px; z-index: 1; pointer-events: none; }
+    .ticker::before { left: 0; background: linear-gradient(90deg, var(--bg-2), transparent); }
+    .ticker::after { right: 0; background: linear-gradient(270deg, var(--bg-2), transparent); }
+    .ticker-track { display: flex; width: max-content; height: 100%; align-items: center; animation: ticker-scroll var(--ticker-s, 120s) linear infinite; }
+    .ticker:hover .ticker-track { animation-play-state: paused; }
+    .ticker-item { display: inline-flex; align-items: baseline; gap: 7px; padding: 0 15px; font-size: 12px; white-space: nowrap; border-right: 1px solid var(--line); cursor: default; }
+    .ticker-group { font-size: 10px; font-weight: 600; letter-spacing: .09em; color: var(--accent); padding: 0 10px 0 20px; white-space: nowrap; }
+    @keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    @media (prefers-reduced-motion: reduce) { .ticker { overflow-x: auto; } .ticker-track { animation: none; } .cp-ring { animation: none !important; } }
+
+    /* map */
+    .leaflet-container { background: var(--map-bg) !important; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+    .leaflet-control-zoom { border: 1px solid var(--line-2) !important; border-radius: 8px !important; overflow: hidden; box-shadow: none !important; }
+    .leaflet-control-zoom a { background: var(--panel) !important; color: var(--ink-2) !important; border-bottom: 1px solid var(--line) !important; }
+    .leaflet-control-attribution { background: color-mix(in srgb, var(--bg) 80%, transparent) !important; color: var(--muted) !important; font-size: 10px !important; }
+    .leaflet-control-attribution a { color: var(--ink-2) !important; }
+    .leaflet-tooltip.gc-tip { background: var(--panel); color: var(--ink); border: 1px solid var(--line-2); border-radius: 6px; font-size: 11.5px; font-weight: 500; padding: 4px 8px; box-shadow: none; }
+    .leaflet-tooltip.gc-tip::before { display: none; }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel) !important; color: var(--ink) !important; border: 1px solid var(--line-2); box-shadow: var(--shadow) !important; }
+    .leaflet-popup-content { margin: 12px 14px !important; font-size: 12px; line-height: 1.5; }
+    .leaflet-container a.leaflet-popup-close-button { color: var(--muted) !important; }
+    .cp-mark { position: relative; width: 0; height: 0; }
+    .cp-core { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1.5px currentColor; background: currentColor; }
+    .cp-ring { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; opacity: 0; }
+    .cp-CRITICAL { color: var(--crit); } .cp-ELEVATED { color: var(--elev); } .cp-NORMAL { color: var(--ok); }
+    .cp-CRITICAL .cp-ring { animation: pulse 1.8s ease-out infinite; }
+    .cp-ELEVATED .cp-ring { animation: pulse 2.8s ease-out infinite; }
+    @keyframes pulse { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(3.6); opacity: 0; } }
+    .cp-label { position: absolute; left: 12px; top: -11px; white-space: nowrap; font-size: 11.5px; font-weight: 600; color: var(--ink); background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line-2); border-radius: 6px; padding: 2px 7px; pointer-events: none; }
+    .cp-label b { font-family: 'IBM Plex Mono', monospace; font-weight: 500; margin-left: 5px; }
+    .cp-mark.left .cp-label { left: auto; right: 12px; }
+    .cp-mark.sel .cp-core { box-shadow: 0 0 0 1.5px currentColor, 0 0 0 6px color-mix(in srgb, currentColor 30%, transparent); }
+    .layer-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); cursor: pointer; padding: 3px 0; user-select: none; }
+    .layer-row input { accent-color: var(--accent); }
+
+    /* markdown in copilot */
+    .md p { margin: 0 0 8px; }
+    .md .md-h { color: var(--ink); font-weight: 600; margin: 12px 0 6px; font-size: 14px; }
+    .md .md-h:first-child { margin-top: 0; }
+    .md ul, .md ol { margin: 4px 0 10px; padding-left: 20px; }
+    .md ul { list-style: disc; } .md ol { list-style: decimal; }
+    .md li { margin: 3px 0; }
+    .md code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--panel-3); padding: 1px 5px; border-radius: 4px; }
+    .md pre { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--panel-2); border: 1px solid var(--line); padding: 10px; border-radius: 8px; overflow-x: auto; }
+    .md a { color: var(--accent); }
+    .md strong { color: var(--ink); font-weight: 600; }
+    .md table { border-collapse: collapse; margin: 6px 0 10px; font-size: 12px; }
+    .md td, .md th { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+    .md .md-gap { height: 4px; }
+
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 5px; }
+    #boot-error { display: none; max-width: 640px; margin: 96px auto; padding: 24px; border: 1px solid var(--crit); border-radius: 12px; font-size: 14px; color: var(--crit); background: var(--panel); line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="boot-error"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+    // =====================================================================
+    // CONFIG & HELPERS
+    // =====================================================================
+    const API_BASE = (() => {
+      const { protocol, port } = window.location;
+      if (protocol.startsWith('http') && port === '8000') return '';
+      return 'http://localhost:8000';
+    })();
+
+    async function api(path, opts = {}, timeoutMs = 30000) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(API_BASE + path, { ...opts, signal: ctrl.signal });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || data.detail || `HTTP ${res.status}`);
+        return data;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    const STATUS = {
+      CRITICAL: { label: 'Critical', pill: 'pill-crit', css: 'var(--crit)' },
+      ELEVATED: { label: 'Elevated', pill: 'pill-elev', css: 'var(--elev)' },
+      NORMAL:   { label: 'Normal',   pill: 'pill-ok',   css: 'var(--ok)' },
+    };
+    const statusFor = (r) => (r >= 8 ? 'CRITICAL' : r >= 5 ? 'ELEVATED' : 'NORMAL');
+    const CHOKE_ORDER = ['HORMUZ', 'BAB_EL_MANDEB', 'SUEZ', 'PANAMA', 'MALACCA'];
+    const SHORT = { SUEZ: 'Suez', HORMUZ: 'Hormuz', BAB_EL_MANDEB: 'Bab-el-Mandeb', PANAMA: 'Panama', MALACCA: 'Malacca', CAPE_OF_GOOD_HOPE: 'Cape of Good Hope' };
+    const EVENT_LABEL = {
+      MILITARY_CONFLICT: 'Military conflict', PIRACY: 'Piracy / armed robbery', DROUGHT_WEATHER: 'Drought / weather',
+      STRIKE_LABOR: 'Labour action', GENERAL_ADVISORY: 'General advisory',
+    };
+    const titleCase = (s) => (s || '').toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const nodeName = (graph, id) => graph?.nodes.find((n) => n.id === id)?.name || SHORT[id] || titleCase(id);
+    const fmtNum = (n, d = 0) => (typeof n === 'number' ? n.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d }) : '--');
+    const pct = (x, d = 0) => (typeof x === 'number' ? `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(d)}%` : '--');
+    const fmtPrice = (x) => (typeof x !== 'number' ? '--' : x >= 1000 ? x.toLocaleString('en-US', { maximumFractionDigits: 0 }) : x >= 100 ? x.toFixed(1) : x.toFixed(2));
+    const sigmoid = (z) => 1 / (1 + Math.exp(-z));
+    const fmtDate = (iso) => (iso ? new Date(iso + (iso.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '--');
+    const shortDate = (iso) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
+    const relTime = (iso) => {
+      if (!iso) return null;
+      const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+      if (s < 60) return 'just now';
+      if (s < 3600) return `${Math.round(s / 60)} min ago`;
+      if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+      return `${Math.round(s / 86400)} d ago`;
+    };
+    const clockTime = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null);
+    const niceMax = (v) => {
+      if (!(v > 0)) return 1;
+      const p = Math.pow(10, Math.floor(Math.log10(v)));
+      const m = v / p;
+      return ([1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((s) => m <= s) || 10) * p;
+    };
+
+    // Minimal, safe markdown: escape everything first, then apply a small grammar.
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function inlineMd(s) {
+      return s
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:]|$)/g, '$1<em>$2</em>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    }
+    function renderMarkdown(src) {
+      const lines = escapeHtml(src || '').split('\n');
+      let html = '', list = null, inCode = false, code = [], table = [];
+      const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+      const flushTable = () => {
+        if (!table.length) return;
+        const rows = table.filter((r) => !/^\s*\|?\s*:?-{2,}/.test(r));
+        html += '<table>';
+        rows.forEach((r, i) => {
+          const cells = r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+          const tag = i === 0 ? 'th' : 'td';
+          html += '<tr>' + cells.map((c) => `<${tag}>${inlineMd(c.trim())}</${tag}>`).join('') + '</tr>';
+        });
+        html += '</table>';
+        table = [];
+      };
+      for (const raw of lines) {
+        if (raw.trim().startsWith('```')) {
+          flushTable();
+          if (inCode) { html += `<pre>${code.join('\n')}</pre>`; code = []; inCode = false; }
+          else { closeList(); inCode = true; }
+          continue;
+        }
+        if (inCode) { code.push(raw); continue; }
+        const line = raw.replace(/\s+$/, '');
+        if (/^\s*\|.*\|\s*$/.test(line)) { closeList(); table.push(line); continue; }
+        flushTable();
+        let m;
+        if ((m = line.match(/^#{1,4}\s+(.*)$/))) { closeList(); html += `<div class="md-h">${inlineMd(m[1])}</div>`; continue; }
+        if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { if (list !== 'ul') { closeList(); html += '<ul>'; list = 'ul'; } html += `<li>${inlineMd(m[1])}</li>`; continue; }
+        if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== 'ol') { closeList(); html += '<ol>'; list = 'ol'; } html += `<li>${inlineMd(m[1])}</li>`; continue; }
+        if (line.trim() === '') { closeList(); html += '<div class="md-gap"></div>'; continue; }
+        closeList();
+        html += `<p>${inlineMd(line)}</p>`;
+      }
+      flushTable();
+      if (inCode) html += `<pre>${code.join('\n')}</pre>`;
+      closeList();
+      return html;
+    }
+
+    function readTheme() { return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; }
+
+    // =====================================================================
+    // ICONS (inline, 18px stroke icons)
+    // =====================================================================
+    const ICON_PATHS = {
+      command: 'M12 3a9 9 0 1 0 9 9M12 7a5 5 0 1 0 5 5M12 12l7-7M12 11.2a.8.8 0 1 0 0 1.6',
+      choke: 'M3 6c3 0 4 3 9 3s6-3 9-3M3 18c3 0 4-3 9-3s6 3 9 3M12 9v6',
+      route: 'M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 17h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7',
+      intel: 'M5 4h11l3 3v13H5zM9 9h6M9 13h6M9 17h4',
+      markets: 'M4 19h16M6 16l4-5 3 3 5-7',
+      goods: 'M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8',
+      ai: 'M8 8h8v8H8zM10 4v4M14 4v4M10 16v4M14 16v4M4 10h4M4 14h4M16 10h4M16 14h4',
+      chat: 'M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.2 3.6c-.5.4-1.3.1-1.3-.6V16A2.5 2.5 0 0 1 4 13.5zM8.5 8.5h7M8.5 11.5h4.5',
+      sun: 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+      moon: 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z',
+      menu: 'M4 7h16M4 12h16M4 17h16',
+      close: 'M6 6l12 12M18 6L6 18',
+      refresh: 'M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4',
+      ext: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
+      layers: 'M12 4l9 5-9 5-9-5zM3 14l9 5 9-5',
+      arrow: 'M5 12h14M13 6l6 6-6 6',
+      ship: 'M3 17l2 3h14l2-3M5 17l1-6h12l1 6M9 11V7h6v4M12 7V4',
+      oil: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z',
+    };
+    function Icon({ name, size = 18, className = '', stroke = 1.7 }) {
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+          <path d={ICON_PATHS[name]} stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    // =====================================================================
+    // SMALL PRIMITIVES
+    // =====================================================================
+    function StatusPill({ status, children }) {
+      const s = STATUS[status] || STATUS.NORMAL;
+      return <span className={`pill ${s.pill}`}><span className="dot" />{children || s.label}</span>;
+    }
+
+    function Panel({ title, sub, actions, children, className = '', bodyClass = 'p-5' }) {
+      return (
+        <section className={`panel ${className}`}>
+          {(title || actions) && (
+            <div className="panel-hd">
+              <div className="min-w-0">
+                {title && <div className="panel-title">{title}</div>}
+                {sub && <div className="panel-sub">{sub}</div>}
+              </div>
+              {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+            </div>
+          )}
+          <div className={bodyClass}>{children}</div>
+        </section>
+      );
+    }
+
+    function Stat({ label, value, unit, sub, tone }) {
+      return (
+        <div className="min-w-0">
+          <div className="text-[12px] muted mb-1">{label}</div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[22px] font-semibold leading-none" style={tone ? { color: tone } : null}>{value}</span>
+            {unit && <span className="text-[12px] muted">{unit}</span>}
+          </div>
+          {sub && <div className="text-[12px] ink-2 mt-1.5">{sub}</div>}
+        </div>
+      );
+    }
+
+    function Empty({ children, action }) {
+      return (
+        <div className="panel-2 px-6 py-10 text-center">
+          <div className="text-[13px] muted">{children}</div>
+          {action && <div className="mt-4">{action}</div>}
+        </div>
+      );
+    }
+
+    function SourceLink({ url, label = 'Source' }) {
+      if (!url) return null;
+      return <a className="src inline-flex items-center gap-1" href={url} target="_blank" rel="noopener noreferrer">{label}<Icon name="ext" size={12} /></a>;
+    }
+
+    // chart hover helper: maps a mouse event to viewBox coordinates
+    function useSvgPointer(W) {
+      const ref = useRef(null);
+      const toLocal = useCallback((evt) => {
+        const r = ref.current?.getBoundingClientRect();
+        if (!r) return null;
+        return { vx: ((evt.clientX - r.left) / r.width) * W, px: evt.clientX - r.left, py: evt.clientY - r.top, w: r.width, h: r.height };
+      }, [W]);
+      return [ref, toLocal];
+    }
+
+    // =====================================================================
+    // MARKET TICKER (marquee)
+    // =====================================================================
+    const TICKER_GROUP_LABEL = { INDEX: 'INDICES', COMMODITY: 'COMMODITIES', SHIPPING: 'SHIPPING', FX: 'FX & RATES' };
+    const CCY_SYMBOL = { USD: '$', EUR: '€', GBP: '£', INR: '₹', JPY: '¥', CNY: '¥', HKD: 'HK$', KRW: '₩', DKK: 'kr ' };
+    const fmtQuote = (q) => {
+      if (!q || typeof q.price !== 'number') return '--';
+      const d = q.price >= 1000 ? 0 : q.price >= 10 ? 2 : 3;
+      const n = q.price.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+      return q.group === 'INDEX' || q.group === 'FX' ? n : (CCY_SYMBOL[q.currency] || '') + n;
+    };
+    const fmtChange = (c) => (typeof c === 'number' ? `${c >= 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(2)}%` : '');
+    const changeColor = (c) => (typeof c !== 'number' ? 'var(--muted)' : c >= 0 ? 'var(--ok)' : 'var(--crit)');
+
+    function Ticker({ quotes }) {
+      const items = (quotes || []).filter((q) => typeof q.price === 'number');
+      if (!items.length) {
+        return <div className="ticker flex items-center px-5 text-[12px] muted">{quotes ? 'Market quotes unavailable right now' : 'Loading market quotes…'}</div>;
+      }
+      const row = [];
+      items.forEach((q, i) => {
+        if (i === 0 || items[i - 1].group !== q.group) row.push({ group: q.group });
+        row.push(q);
+      });
+      const render = (copy) => row.map((x, i) => x.symbol ? (
+        <span key={`${copy}-${i}`} className="ticker-item" title={`${x.label} (${x.symbol}) · ${x.note}`}>
+          <span className="ink-2">{x.label}</span>
+          <span className="num ink">{fmtQuote(x)}</span>
+          <span className="num text-[11px]" style={{ color: changeColor(x.change_pct) }}>{fmtChange(x.change_pct)}</span>
+        </span>
+      ) : <span key={`${copy}-${i}`} className="ticker-group">{TICKER_GROUP_LABEL[x.group] || x.group}</span>);
+      return (
+        <div className="ticker" aria-label="Market ticker">
+          <div className="ticker-track" style={{ '--ticker-s': `${Math.max(60, items.length * 4)}s` }}>
+            <div className="flex items-center">{render('a')}</div>
+            <div className="flex items-center" aria-hidden="true">{render('b')}</div>
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // SIDEBAR + TOP BAR
+    // =====================================================================
+    const NAV = [
+      { id: 'command', label: 'Command center', icon: 'command', title: 'Command center', sub: 'Live risk at the five sea passages that carry most of world trade' },
+      { id: 'chokepoints', label: 'Chokepoints', icon: 'choke', title: 'Chokepoint analysis', sub: 'How the AI rates each passage, and the evidence behind it' },
+      { id: 'routes', label: 'Route planner', icon: 'route', title: 'Risk-aware route planner', sub: 'A* search for the safest and the fastest sea route between two ports' },
+      { id: 'intel', label: 'Threat intelligence', icon: 'intel', title: 'Threat intelligence', sub: 'News read, grouped and rated for threat by the AI' },
+      { id: 'markets', label: 'Markets', icon: 'markets', title: 'Markets', sub: 'Prices that react when a chokepoint is disrupted' },
+      { id: 'goods', label: 'Goods at risk', icon: 'goods', title: 'Goods at risk', sub: 'K-means grouping of commodities by price swings and supply strain' },
+      { id: 'ai', label: 'How the AI works', icon: 'ai', title: 'How the AI works', sub: 'The agent design and the AI techniques behind every number' },
+    ];
+
+    function Brand() {
+      return (
+        <a href="#/command" className="flex items-center gap-3 px-2">
+          <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true" className="shrink-0">
+            <rect x="0.5" y="0.5" width="33" height="33" rx="9" fill="var(--panel)" stroke="var(--line-2)" />
+            <circle cx="17" cy="17" r="9.5" fill="none" stroke="var(--line-2)" strokeWidth="1.4" />
+            <circle cx="17" cy="17" r="4.5" fill="none" stroke="var(--accent)" strokeWidth="1.6" />
+            <path d="M17 17 L24 10" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" />
+            <circle cx="23.5" cy="21.5" r="2" fill="var(--crit)" />
+          </svg>
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold ink leading-tight">Global Chain AI</div>
+            <div className="text-[11.5px] muted leading-tight mt-0.5">Chokepoint intelligence</div>
+          </div>
+        </a>
+      );
+    }
+
+    function Sidebar({ route, open, setOpen, health, online, chokes, theme, toggleTheme, onAsk }) {
+      const crit = (chokes || []).filter((c) => c.status === 'CRITICAL').length;
+      const llm = health?.llm;
+      const engineOk = llm?.status === 'READY';
+      const go = () => setOpen(false);
+      return (
+        <>
+          <div className={`side-scrim ${open ? 'open' : ''}`} onClick={go} />
+          <aside className={`side ${open ? 'open' : ''}`}>
+            <div className="px-4 pt-5 pb-4 flex items-center justify-between"><Brand />
+              <button className="btn btn-ghost btn-sm lg:hidden !px-1.5" onClick={go} aria-label="Close menu"><Icon name="close" /></button>
+            </div>
+            <nav className="px-3 space-y-0.5 flex-1 overflow-y-auto">
+              {NAV.map((n) => (
+                <a key={n.id} href={`#/${n.id}`} onClick={go} className={`nav-item ${route.page === n.id ? 'on' : ''}`}>
+                  <Icon name={n.icon} />{n.label}
+                  {n.id === 'chokepoints' && crit > 0 && <span className="nav-badge pill-crit">{crit}</span>}
+                </a>
+              ))}
+              <div className="pt-3 mt-3 border-t hair">
+                <button className="nav-item" onClick={() => { go(); onAsk(); }}><Icon name="chat" />Ask the AI analyst</button>
+              </div>
+            </nav>
+            <div className="px-4 py-4 border-t hair space-y-2.5 text-[12px]">
+              <div className="kicker mb-1">System</div>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: online === false ? 'var(--crit)' : online ? 'var(--ok)' : 'var(--muted)' }} />
+                <span className="ink-2">Server</span><span className="ml-auto muted">{online === false ? 'offline' : online ? 'online' : '…'}</span>
+              </div>
+              <div className="flex items-center gap-2" title={llm?.last_error || ''}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: engineOk ? 'var(--ok)' : 'var(--elev)' }} />
+                <span className="ink-2">LLM</span><span className="ml-auto muted truncate max-w-[130px]">{engineOk ? llm.model : llm ? 'rule engine' : '…'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: health?.heuristic?.admissible ? 'var(--ok)' : 'var(--muted)' }} />
+                <span className="ink-2">A* heuristic</span><span className="ml-auto muted">{health?.heuristic ? (health.heuristic.admissible ? 'admissible' : 'violated') : '…'}</span>
+              </div>
+              <button className="btn btn-sm w-full mt-2" onClick={toggleTheme}>
+                <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} />{theme === 'dark' ? 'Light theme' : 'Dark theme'}
+              </button>
+            </div>
+          </aside>
+        </>
+      );
+    }
+
+    function TopBar({ nav, intel, ingesting, onIngest, online, onMenu, ticker }) {
+      const live = intel?.mode === 'LIVE';
+      return (
+        <header className="topbar">
+          <Ticker quotes={ticker?.quotes} />
+          <div className="px-5 lg:px-8 py-3.5 flex items-center gap-4">
+            <button className="btn btn-ghost !px-2 lg:hidden" onClick={onMenu} aria-label="Open menu"><Icon name="menu" /></button>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[19px] font-semibold ink leading-tight truncate">{nav.title}</h1>
+              <div className="text-[12.5px] muted truncate mt-0.5 hidden sm:block">{nav.sub}</div>
+            </div>
+            <div className="hidden md:flex items-center gap-2 text-[12px]">
+              {intel && (live
+                ? <span className="pill pill-ok"><span className="dot" />Live · {clockTime(intel.scanned_at)}</span>
+                : <span className="pill pill-neutral" title="Curated briefing; run the AI analysis to read today's news">Baseline briefing</span>)}
+            </div>
+            <button className="btn btn-primary" onClick={onIngest} disabled={ingesting || online === false}>
+              {ingesting ? <span className="spinner" /> : <Icon name="refresh" size={16} stroke={2} />}
+              <span className="hidden sm:inline">{ingesting ? 'Analysing…' : 'Run AI analysis'}</span>
+            </button>
+          </div>
+        </header>
+      );
+    }
+
+    // =====================================================================
+    // MAP
+    // =====================================================================
+    const SHIP_COLORS = {
+      tanker: '#F87171', cargo: '#34D399', passenger: '#60A5FA', fishing: '#FBBF24', tug: '#A78BFA',
+      military: '#F472B6', special: '#22D3EE', pleasure: '#E879F9', other: '#9CA3AF', unknown: '#6B7280',
+    };
+    const SHIP_LABEL = {
+      tanker: 'Tanker', cargo: 'Cargo', passenger: 'Passenger', fishing: 'Fishing', tug: 'Tug / towing',
+      military: 'Military', special: 'Special craft', pleasure: 'Pleasure', other: 'Other', unknown: 'Unknown',
+    };
+    const yesterdayUTC = () => new Date(Date.now() - 36 * 3600 * 1000).toISOString().slice(0, 10);
+    const BASEMAPS = {
+      auto: { label: 'Chart', make: (theme) => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${theme === 'light' ? 'Light' : 'Dark'}_Gray_Base/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 16, attribution: 'Tiles &copy; Esri' }) },
+      ocean: { label: 'Ocean', make: () => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 13, attribution: 'Tiles &copy; Esri, GEBCO, NOAA' }) },
+      satellite: { label: 'Satellite', make: () => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 17, attribution: 'Imagery &copy; Esri, Maxar' }) },
+      nasa: { label: 'NASA today', make: () => L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${yesterdayUTC()}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, { maxNativeZoom: 9, maxZoom: 12, attribution: 'NASA GIBS / VIIRS (daily)' }) },
+    };
+    const OVERLAYS = [
+      ['ships', 'Live ships (AIS)'],
+      ['traffic', 'Transits vs normal'],
+      ['density', 'Shipping density (EU)'],
+      ['seamarks', 'Sea marks'],
+    ];
+    const LABEL_LEFT = new Set(['SUEZ', 'PANAMA']);
+
+    function shipPopup(v) {
+      const row = (k, val) => (val === null || val === undefined || val === '' ? '' : `<div><span style="color:var(--muted)">${k}</span> ${escapeHtml(String(val))}</div>`);
+      return `<div style="font-weight:600;font-size:13px;margin-bottom:4px">${escapeHtml(v.name || 'Unnamed vessel')}</div>`
+        + row('Type', SHIP_LABEL[v.category] || v.category)
+        + row('Speed', v.sog != null ? `${v.sog.toFixed(1)} kn` : null)
+        + row('Course', v.cog != null ? `${Math.round(v.cog)}°` : null)
+        + row('Status', v.nav_status)
+        + row('Destination', v.destination)
+        + row('MMSI', v.mmsi)
+        + row('Last report', `${Math.round(v.age_s / 60)} min ago via ${v.source}`);
+    }
+
+    function MaritimeMap({ graph, chokes, routes, focus, onSelect, signals, online, theme, height = 560, labels = true, defaultShips = true, fitRoutes = true }) {
+      const elRef = useRef(null);
+      const mapRef = useRef(null);
+      const layers = useRef({});
+      const baseRef = useRef(null);
+      const [base, setBase] = useState('auto');
+      const [over, setOver] = useState({ ships: defaultShips, traffic: false, density: false, seamarks: false });
+      const [panel, setPanel] = useState(false);
+      const [ais, setAis] = useState(null);
+      const [view, setView] = useState(0);
+
+      useEffect(() => {
+        if (!elRef.current || !window.L || mapRef.current) return;
+        const map = L.map(elRef.current, { center: [18, 45], zoom: 2, minZoom: 2, maxZoom: 12, zoomControl: false, scrollWheelZoom: false, worldCopyJump: true });
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        layers.current.renderer = L.canvas({ padding: 0.3 });
+        layers.current.density = L.tileLayer.wms('https://ows.emodnet-humanactivities.eu/wms', {
+          layers: 'emodnet:vesseldensity_all', format: 'image/png', transparent: true, opacity: 0.8, attribution: 'Vessel density &copy; EMODnet',
+        });
+        layers.current.seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, attribution: 'Sea marks &copy; OpenSeaMap' });
+        layers.current.ports = L.layerGroup().addTo(map);
+        layers.current.ships = L.layerGroup().addTo(map);
+        layers.current.traffic = L.layerGroup().addTo(map);
+        layers.current.routes = L.layerGroup().addTo(map);
+        layers.current.chokes = L.layerGroup().addTo(map);
+        map.on('click', () => map.scrollWheelZoom.enable());
+        map.on('mouseout', () => map.scrollWheelZoom.disable());
+        map.on('moveend', () => setView((n) => n + 1));
+        mapRef.current = map;
+        const t = setTimeout(() => map.invalidateSize(), 200);
+        const ro = new ResizeObserver(() => map.invalidateSize());
+        ro.observe(elRef.current);
+        return () => { clearTimeout(t); ro.disconnect(); map.remove(); mapRef.current = null; };
+      }, []);
+
+      useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        if (baseRef.current) map.removeLayer(baseRef.current);
+        baseRef.current = BASEMAPS[base].make(theme).addTo(map);
+        baseRef.current.bringToBack();
+      }, [base, theme]);
+
+      useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        ['density', 'seamarks'].forEach((k) => {
+          const lyr = layers.current[k];
+          if (over[k] && !map.hasLayer(lyr)) lyr.addTo(map);
+          if (!over[k] && map.hasLayer(lyr)) map.removeLayer(lyr);
+        });
+        if (!over.ships) { layers.current.ships.clearLayers(); setAis(null); }
+        if (!over.traffic) layers.current.traffic.clearLayers();
+      }, [over]);
+
+      // live AIS: poll the backend for vessels inside the current view
+      const fetchShips = useCallback(async () => {
+        const map = mapRef.current;
+        if (!map || online === false) return;
+        const b = map.getBounds();
+        const span = b.getEast() - b.getWest();
+        const qs = span >= 350 ? '' : `bbox=${[b.getSouth(), Math.max(-180, b.getWest()), b.getNorth(), Math.min(180, b.getEast())].map((x) => x.toFixed(3)).join(',')}&`;
+        try {
+          const data = await api(`/api/vessels?${qs}limit=5000`, {}, 15000);
+          setAis(data);
+          if (data.tracked_total === 0) setTimeout(() => setView((n) => n + 1), 4000);
+        } catch {}
+      }, [online]);
+
+      useEffect(() => {
+        if (!over.ships) return;
+        fetchShips();
+        const t = setInterval(fetchShips, 15000);
+        return () => clearInterval(t);
+      }, [over.ships, fetchShips]);
+
+      useEffect(() => {
+        if (!over.ships) return;
+        const t = setTimeout(fetchShips, 400);
+        return () => clearTimeout(t);
+      }, [view]); // eslint-disable-line
+
+      useEffect(() => {
+        const g = layers.current.ships;
+        const map = mapRef.current;
+        if (!g || !map || !over.ships) return;
+        g.clearLayers();
+        if (!ais) return;
+        const renderer = layers.current.renderer;
+        const zoom = map.getZoom();
+        const lenDeg = 5 / Math.pow(2, zoom);
+        const showVectors = zoom >= 5;
+        ais.vessels.forEach((v) => {
+          const col = SHIP_COLORS[v.category] || SHIP_COLORS.unknown;
+          const moving = (v.sog || 0) >= 1 && v.cog != null;
+          if (moving && showVectors) {
+            const d = lenDeg * Math.min(1.6, 0.4 + v.sog / 15);
+            const rad = (v.cog * Math.PI) / 180;
+            const tip = [v.lat + d * Math.cos(rad), v.lng + (d * Math.sin(rad)) / Math.max(0.2, Math.cos((v.lat * Math.PI) / 180))];
+            L.polyline([[v.lat, v.lng], tip], { renderer, color: col, weight: 1.2, opacity: 0.85, interactive: false }).addTo(g);
+          }
+          L.circleMarker([v.lat, v.lng], { renderer, radius: moving ? 2.6 : 2, color: col, weight: 0, fillColor: col, fillOpacity: moving ? 0.95 : 0.55 })
+            .bindPopup(() => shipPopup(v), { maxWidth: 260 })
+            .addTo(g);
+        });
+      }, [ais, over.ships]);
+
+      // passage traffic bubbles (AIS transit counts vs normal)
+      useEffect(() => {
+        const g = layers.current.traffic;
+        if (!g) return;
+        g.clearLayers();
+        if (!over.traffic || !signals) return;
+        const idx = Object.fromEntries((graph?.nodes || []).map((n) => [n.id, n]));
+        signals.chokepoints.forEach((c) => {
+          const t = c.traffic, n = idx[c.id];
+          if (!t || !n) return;
+          const col = t.pct_vs_baseline <= -0.25 ? '#F0545C' : t.pct_vs_baseline <= -0.1 ? '#F2A93B' : '#3CC583';
+          L.circleMarker([n.lat, n.lng], { radius: 8 + Math.sqrt(t.baseline_median) * 1.4, color: col, weight: 1, fillColor: col, fillOpacity: 0.06, interactive: false }).addTo(g);
+          L.circleMarker([n.lat, n.lng], { radius: 8 + Math.sqrt(t.recent_7d_mean) * 1.4, color: col, weight: 1.5, fillColor: col, fillOpacity: 0.2, interactive: false }).addTo(g);
+        });
+      }, [signals, graph, over.traffic]);
+
+      const fitted = useRef(false);
+      useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !graph || fitted.current || routes) return;
+        fitted.current = true;
+        map.fitBounds(L.latLngBounds(graph.nodes.map((n) => [n.lat, n.lng])), { padding: [30, 30] });
+      }, [graph, routes]);
+
+      useEffect(() => {
+        const g = layers.current.ports;
+        if (!g || !graph) return;
+        g.clearLayers();
+        graph.nodes.filter((n) => n.kind === 'PORT').forEach((n) => {
+          L.circleMarker([n.lat, n.lng], { radius: 3.5, color: theme === 'light' ? '#445163' : '#A7B2C1', weight: 1.5, fillColor: theme === 'light' ? '#FFFFFF' : '#0D141F', fillOpacity: 1 })
+            .bindTooltip(n.name, { className: 'gc-tip', direction: 'top', offset: [0, -4] }).addTo(g);
+        });
+      }, [graph, theme]);
+
+      useEffect(() => {
+        const g = layers.current.chokes;
+        if (!g || !chokes) return;
+        g.clearLayers();
+        chokes.forEach((c) => {
+          const html = `<div class="cp-mark cp-${c.status} ${LABEL_LEFT.has(c.id) ? 'left' : ''} ${focus === c.id ? 'sel' : ''}"><span class="cp-ring"></span><span class="cp-core"></span>`
+            + (labels ? `<span class="cp-label">${escapeHtml(SHORT[c.id] || c.name)}<b>${c.effective_risk.toFixed(0)}</b></span>` : '') + '</div>';
+          L.marker([c.lat, c.lng], { icon: L.divIcon({ html, className: '', iconSize: [0, 0] }), zIndexOffset: 1000, keyboard: true, title: `${c.name}: ${STATUS[c.status].label}` })
+            .on('click', (e) => { L.DomEvent.stopPropagation(e); onSelect && onSelect(c.id); })
+            .addTo(g);
+        });
+      }, [chokes, onSelect, focus, labels]);
+
+      useEffect(() => {
+        if (!focus || !mapRef.current || !chokes || routes) return;
+        const c = chokes.find((x) => x.id === focus);
+        if (c) mapRef.current.flyTo([c.lat, c.lng], 5, { duration: 0.8 });
+      }, [focus, chokes, routes]);
+
+      useEffect(() => {
+        const g = layers.current.routes;
+        const map = mapRef.current;
+        if (!g || !map) return;
+        g.clearLayers();
+        if (!routes || !routes.safe_route) return;
+        const safe = routes.safe_route.geometry;
+        const direct = routes.commercial_route.geometry;
+        const converged = routes.comparison.converged;
+        if (!converged) {
+          L.polyline(direct, { color: '#F2A93B', weight: 2.5, opacity: 0.95, dashArray: '7 7' })
+            .bindTooltip('Fastest route', { className: 'gc-tip', sticky: true }).addTo(g);
+        }
+        L.polyline(safe, { color: '#4CC3EE', weight: 7, opacity: 0.18 }).addTo(g);
+        L.polyline(safe, { color: '#4CC3EE', weight: 3, opacity: 1 })
+          .bindTooltip(converged ? 'Recommended route' : 'Safest route', { className: 'gc-tip', sticky: true }).addTo(g);
+        const idx = Object.fromEntries((graph?.nodes || []).map((n) => [n.id, n]));
+        [routes.start, routes.end].forEach((id, i) => {
+          const n = idx[id];
+          if (!n) return;
+          L.circleMarker([n.lat, n.lng], { radius: 6, color: '#4CC3EE', weight: 2.5, fillColor: theme === 'light' ? '#FFFFFF' : '#060A10', fillOpacity: 1 })
+            .bindTooltip(`${i === 0 ? 'From' : 'To'}: ${n.name}`, { className: 'gc-tip', permanent: true, direction: i === 0 ? 'left' : 'right', offset: [i === 0 ? -9 : 9, 0] })
+            .addTo(g);
+        });
+        if (fitRoutes) {
+          const bounds = L.latLngBounds([...safe, ...direct]);
+          if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 4 });
+        }
+      }, [routes, graph, theme, fitRoutes]);
+
+      const providers = ais ? Object.values(ais.providers) : [];
+      const presentCats = ais ? Object.keys(SHIP_COLORS).filter((k) => ais.vessels.some((v) => v.category === k)) : [];
+
+      return (
+        <div className="relative overflow-hidden rounded-xl border hair" style={{ height }}>
+          <div ref={elRef} className="absolute inset-0" />
+          {!window.L && <div className="absolute inset-0 flex items-center justify-center text-sm muted">The map library failed to load.</div>}
+
+          <div className="absolute right-3 top-3 z-[600] flex flex-col items-end gap-2">
+            <button className="btn btn-sm" style={{ background: 'var(--panel)' }} onClick={() => setPanel((v) => !v)} aria-expanded={panel}><Icon name="layers" size={15} />Layers</button>
+            {panel && (
+              <div className="panel px-4 py-3 w-[232px] space-y-3 fade-in" style={{ boxShadow: 'var(--shadow)' }}>
+                <div>
+                  <div className="kicker mb-1.5">Base map</div>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(BASEMAPS).map(([k, b]) => (
+                      <button key={k} onClick={() => setBase(k)} className={`chipbtn !py-1 !px-2.5 ${base === k ? 'on' : ''}`}>{b.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="kicker mb-1">Layers</div>
+                  {OVERLAYS.map(([k, label]) => (
+                    <label key={k} className="layer-row">
+                      <input type="checkbox" checked={over[k]} onChange={(e) => setOver((o) => ({ ...o, [k]: e.target.checked }))} />
+                      <span>{label}</span>
+                      {k === 'ships' && over.ships && ais && <span className="num muted ml-auto">{fmtNum(ais.in_view)}</span>}
+                    </label>
+                  ))}
+                </div>
+                {over.ships && ais && (
+                  <div className="border-t hair pt-2 space-y-1">
+                    {providers.map((p) => (
+                      <div key={p.name} className="flex items-center gap-2 text-[11px] muted">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.state === 'connected' || p.state === 'polling' ? 'var(--ok)' : p.state === 'no key' ? 'var(--muted)' : 'var(--elev)' }} />
+                        <span className="truncate">{p.name}</span>
+                        <span className="ml-auto">{p.state === 'no key' ? 'add key' : p.state}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="absolute left-3 bottom-3 z-[500] panel px-3.5 py-2.5 text-[11.5px] ink-2 space-y-1.5 pointer-events-none max-w-[calc(100%-70px)]" style={{ background: 'color-mix(in srgb, var(--panel) 92%, transparent)' }}>
+            <div className="flex items-center gap-3 flex-wrap">
+              {['CRITICAL', 'ELEVATED', 'NORMAL'].map((k) => (
+                <span key={k} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: STATUS[k].css }} />{STATUS[k].label}</span>
+              ))}
+              {routes && <><span className="flex items-center gap-1.5"><span className="inline-block w-5 h-[3px] rounded" style={{ background: '#4CC3EE' }} />Safest</span>
+                <span className="flex items-center gap-1.5"><span className="inline-block w-5 border-t-2 border-dashed" style={{ borderColor: '#F2A93B' }} />Fastest</span></>}
+            </div>
+            {over.ships && presentCats.length > 0 && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1.5 border-t hair">
+                {presentCats.slice(0, 6).map((k) => <span key={k} className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full" style={{ background: SHIP_COLORS[k] }} />{SHIP_LABEL[k]}</span>)}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // CHARTS
+    // =====================================================================
+    // Daily transits: dots = daily count, line = 7-day mean, band = Holt 80% forecast interval.
+    function TrafficChart({ t, height = 230 }) {
+      const W = 760, H = height, m = { l: 40, r: 14, t: 14, b: 26 };
+      const [ref, toLocal] = useSvgPointer(W);
+      const [hover, setHover] = useState(null);
+      const s = t.series, f = t.forecast;
+      const n = s.length + f.length;
+      const cp = t.change_point;
+      const ymax = niceMax(Math.max(...s.map((p) => p.total), ...f.map((p) => p.hi), t.baseline_median, cp ? cp.before_mean : 0) * 1.05);
+      const x = (i) => m.l + (i / (n - 1)) * (W - m.l - m.r);
+      const y = (v) => H - m.b - (v / ymax) * (H - m.t - m.b);
+      const ma = s.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.ma7).toFixed(1)}`).join('');
+      const fx = (i) => x(s.length + i);
+      const fMean = `M${x(s.length - 1).toFixed(1)},${y(s[s.length - 1].ma7).toFixed(1)}` + f.map((p, i) => `L${fx(i).toFixed(1)},${y(p.mean).toFixed(1)}`).join('');
+      const band = f.map((p, i) => `${i ? 'L' : 'M'}${fx(i).toFixed(1)},${y(p.hi).toFixed(1)}`).join('')
+        + [...f].reverse().map((p, j) => `L${fx(f.length - 1 - j).toFixed(1)},${y(p.lo).toFixed(1)}`).join('') + 'Z';
+      const cpIdx = cp ? s.findIndex((p) => p.date >= cp.date) : -1;
+      const months = s.map((p, i) => ({ i, d: p.date })).filter((p, k) => k === 0 || p.d.slice(5, 7) !== s[k - 1].date.slice(5, 7)).filter((p) => p.d.slice(8) <= '07');
+      const onMove = (e) => {
+        const p = toLocal(e);
+        if (!p) return;
+        const i = Math.round(((p.vx - m.l) / (W - m.l - m.r)) * (n - 1));
+        if (i < 0 || i >= n) { setHover(null); return; }
+        setHover({ i, px: p.px, py: Math.max(30, p.py) });
+      };
+      const hi = hover?.i;
+      const hp = hi != null ? (hi < s.length ? { kind: 'obs', ...s[hi] } : { kind: 'fc', ...f[hi - s.length] }) : null;
+      return (
+        <div className="relative">
+          <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" role="img" aria-label="Daily transits with 14-day forecast" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+            {[0, 0.5, 1].map((g) => (
+              <g key={g}>
+                <line x1={m.l} x2={W - m.r} y1={y(ymax * g)} y2={y(ymax * g)} stroke="var(--grid)" />
+                <text x={m.l - 8} y={y(ymax * g) + 4} textAnchor="end" fontSize="11" fill="var(--muted)" fontFamily="IBM Plex Mono">{Math.round(ymax * g)}</text>
+              </g>
+            ))}
+            {months.map((mo) => <text key={mo.i} x={x(mo.i)} y={H - 6} fontSize="11" fill="var(--muted)">{new Date(mo.d + 'T00:00:00').toLocaleDateString('en-GB', { month: 'short' })}</text>)}
+            {cpIdx > 0 && (
+              <g>
+                <rect x={x(cpIdx)} y={m.t} width={x(s.length - 1) - x(cpIdx)} height={H - m.t - m.b} fill="var(--crit)" opacity="0.06" />
+                <line x1={x(cpIdx)} x2={x(cpIdx)} y1={m.t} y2={H - m.b} stroke="var(--crit)" strokeWidth="1.2" />
+                <text x={x(cpIdx) + 6} y={m.t + 12} fontSize="11" fill="var(--crit)" fontWeight="600">Level shift {shortDate(cp.date)}: {cp.before_mean.toFixed(0)} → {cp.after_mean.toFixed(0)}/day</text>
+              </g>
+            )}
+            <line x1={m.l} x2={W - m.r} y1={y(t.baseline_median)} y2={y(t.baseline_median)} stroke="var(--ink-2)" strokeOpacity="0.55" />
+            <text x={W - m.r} y={y(t.baseline_median) - 5} textAnchor="end" fontSize="11" fill="var(--ink-2)">normal {t.baseline_median.toFixed(0)}/day</text>
+            {s.map((p, i) => <circle key={i} cx={x(i)} cy={y(p.total)} r="1.3" fill="var(--muted)" opacity="0.55" />)}
+            <path d={band} fill="var(--accent)" fillOpacity="0.12" />
+            <path d={ma} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
+            <path d={fMean} fill="none" stroke="var(--accent)" strokeWidth="2" strokeDasharray="5 4" />
+            <line x1={x(s.length - 1)} x2={x(s.length - 1)} y1={m.t} y2={H - m.b} stroke="var(--axis)" />
+            <text x={x(s.length - 1) + 4} y={H - m.b - 6} fontSize="10.5" fill="var(--muted)">forecast</text>
+            {hp && (
+              <g>
+                <line x1={x(hi)} x2={x(hi)} y1={m.t} y2={H - m.b} stroke="var(--axis)" />
+                <circle cx={x(hi)} cy={y(hp.kind === 'obs' ? hp.ma7 : hp.mean)} r="4.5" fill="var(--accent)" stroke="var(--panel)" strokeWidth="2" />
+              </g>
+            )}
+          </svg>
+          {hp && (
+            <div className="tip" style={{ left: hover.px, top: hover.py }}>
+              {hp.kind === 'obs' ? (
+                <><div className="font-medium">{fmtDate(hp.date)}</div>
+                  <div><span className="t-k">Transits</span> <span className="num">{hp.total}</span></div>
+                  <div><span className="t-k">7-day mean</span> <span className="num">{hp.ma7}</span></div></>
+              ) : (
+                <><div className="font-medium">Forecast +{hp.h} d</div>
+                  <div><span className="t-k">Expected</span> <span className="num">{hp.mean.toFixed(1)}</span></div>
+                  <div><span className="t-k">80% range</span> <span className="num">{hp.lo.toFixed(0)}–{hp.hi.toFixed(0)}</span></div></>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Naive-Bayes log-odds waterfall: each evidence source shifts the log-odds; the end is the posterior.
+    function EvidenceWaterfall({ fusion }) {
+      let cum = 0;
+      const rows = fusion.evidence.map((e) => { const a = cum; cum += e.llr; return { ...e, a, b: cum }; });
+      const vals = [0, ...rows.flatMap((r) => [r.a, r.b])];
+      const lo = Math.min(...vals) - 0.3, hi = Math.max(...vals) + 0.3;
+      const X = (v) => ((v - lo) / (hi - lo)) * 100;
+      return (
+        <div className="space-y-1">
+          <div className="grid grid-cols-[minmax(120px,210px)_1fr_80px] gap-3 text-[11px] muted pb-1">
+            <span>Evidence</span><span>Log-odds of disruption (each bar = one update)</span><span className="text-right">P after step</span>
+          </div>
+          {rows.map((r) => {
+            const up = r.llr >= 0;
+            const left = X(Math.min(r.a, r.b)), width = Math.max(0.8, Math.abs(X(r.b) - X(r.a)));
+            return (
+              <div key={r.source} className="grid grid-cols-[minmax(120px,210px)_1fr_80px] gap-3 items-center py-1.5 group" title={r.detail}>
+                <div className="min-w-0">
+                  <div className="text-[13px] ink truncate">{r.label}</div>
+                  <div className="text-[11.5px] muted clamp2 leading-snug">{r.detail}</div>
+                </div>
+                <div className="relative h-[22px]">
+                  <span className="absolute top-0 bottom-0 w-px" style={{ left: `${X(0)}%`, background: 'var(--axis)' }} />
+                  <span className="absolute top-[5px] h-[12px] rounded-[4px]" style={{ left: `${left}%`, width: `${width}%`, background: r.source === 'prior' ? 'var(--ink-2)' : up ? 'var(--crit)' : 'var(--ok)', opacity: r.source === 'prior' ? 0.5 : 0.9 }} />
+                  <span className="absolute top-[3px] text-[11px] num ink-2" style={{ left: `calc(${Math.max(X(r.a), X(r.b))}% + 6px)` }}>{r.llr >= 0 ? '+' : '−'}{Math.abs(r.llr).toFixed(2)}</span>
+                </div>
+                <div className="text-right num text-[13px] ink">{(sigmoid(r.b) * 100).toFixed(0)}%</div>
+              </div>
+            );
+          })}
+          <div className="grid grid-cols-[minmax(120px,210px)_1fr_80px] gap-3 items-center pt-2 mt-1 border-t hair">
+            <div className="text-[13px] font-semibold ink">Posterior</div>
+            <div className="text-[12px] muted">sigmoid({fusion.log_odds.toFixed(2)}) → risk {fusion.risk.toFixed(1)} / 10</div>
+            <div className="text-right num text-[15px] font-semibold" style={{ color: STATUS[statusFor(fusion.risk)].css }}>{(fusion.posterior * 100).toFixed(0)}%</div>
+          </div>
+        </div>
+      );
+    }
+
+    function Sparkline({ data, height = 36 }) {
+      if (!data || data.length < 2) return null;
+      const W = 160, H = height;
+      const lo = Math.min(...data), hi = Math.max(...data), r = hi - lo || 1;
+      const d = data.map((v, i) => `${i ? 'L' : 'M'}${((i / (data.length - 1)) * W).toFixed(1)},${(H - 3 - ((v - lo) / r) * (H - 6)).toFixed(1)}`).join('');
+      const last = data[data.length - 1];
+      return (
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} preserveAspectRatio="none" aria-hidden="true">
+          <path d={`${d}L${W},${H}L0,${H}Z`} fill="var(--accent)" fillOpacity="0.08" />
+          <path d={d} fill="none" stroke="var(--accent)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+          <circle cx={W - 1.5} cy={H - 3 - ((last - lo) / r) * (H - 6)} r="2.5" fill="var(--accent)" />
+        </svg>
+      );
+    }
+
+    // =====================================================================
+    // AI PIPELINE STRIP (sense → understand → reason → act)
+    // =====================================================================
+    function Pipeline({ intel, health, chokes, clusters, routes }) {
+      const live = intel?.mode === 'LIVE';
+      const gem = (intel?.events || []).filter((e) => e.analysis_engine?.startsWith('GEMINI')).length;
+      const rule = (intel?.events || []).filter((e) => e.analysis_engine === 'RULE_ENGINE').length;
+      const shift = (chokes || []).filter((c) => c.traffic?.change_point);
+      const steps = [
+        { k: 'Sense', title: 'Read the world', href: '#/intel', lines: live
+          ? [`${fmtNum(intel.articles_ingested)} articles from ${intel.sources_responded}/${intel.sources_total} feeds`, `${(intel.traffic_sources || []).filter((s) => s.ok).length} AIS traffic series · ${(intel.market_sources || []).filter((s) => s.ok).length} price series`]
+          : ['Curated briefing loaded', 'Run the AI analysis to read live feeds, AIS and prices'] },
+        { k: 'Understand', title: 'Group and rate news', href: '#/intel', lines: live
+          ? [`${intel.stories_found} stories via TF-IDF clustering`, `${gem} rated by Gemini · ${rule} by the rule engine`]
+          : [`${intel?.events?.length || 0} baseline events`, 'LLM + 16-rule expert system on standby'] },
+        { k: 'Reason', title: 'Fuse evidence', href: '#/chokepoints', lines: [
+          `Bayesian fusion over ${chokes?.length || 5} chokepoints`,
+          shift.length ? `Change point: ${shift.map((c) => `${SHORT[c.id]} since ${shortDate(c.traffic.change_point.date)}`).join(', ')}` : 'Change-point and anomaly checks on AIS traffic'] },
+        { k: 'Act', title: 'Plan and advise', href: '#/routes', lines: [
+          routes?.safe_route ? `A* expanded ${routes.safe_route.search.nodes_expanded} nodes for ${SHORT[routes.start] || titleCase(routes.start)} → ${SHORT[routes.end] || titleCase(routes.end)}` : 'A* risk-aware routing',
+          clusters ? `K-means: ${clusters.clusters.length} groups of goods (silhouette ${clusters.silhouette})` : 'K-means goods-at-risk grouping'] },
+      ];
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {steps.map((s, i) => (
+            <a key={s.k} href={s.href} className="panel-2 p-4 hover:border-[var(--line-2)] transition-colors relative group">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="num text-[11px] w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{i + 1}</span>
+                <span className="kicker !text-[var(--accent)]">{s.k}</span>
+                <Icon name="arrow" size={14} className="ml-auto muted opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <div className="text-[14px] font-medium ink">{s.title}</div>
+              {s.lines.map((l, j) => <div key={j} className="text-[12.5px] ink-2 mt-1 leading-snug">{l}</div>)}
+            </a>
+          ))}
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // PAGE: COMMAND CENTER
+    // =====================================================================
+    function ChokeRow({ c, onOpen }) {
+      const t = c.traffic;
+      return (
+        <button onClick={() => onOpen(c.id)} className="w-full text-left px-5 py-3.5 hover:bg-[var(--panel-2)] transition-colors">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: STATUS[c.status].css }} />
+            <span className="text-[14px] font-medium ink truncate">{c.name}</span>
+            <span className="ml-auto num text-[15px] font-semibold ink">{c.effective_risk.toFixed(0)}<span className="text-[11px] muted font-normal">/10</span></span>
+          </div>
+          <div className="mt-2 track"><span style={{ width: `${c.effective_risk * 10}%`, background: STATUS[c.status].css }} /></div>
+          <div className="mt-2 flex items-center gap-x-4 gap-y-1 flex-wrap text-[12px] muted">
+            <span className="ink-2">{STATUS[c.status].label}</span>
+            {c.fusion && <span>P(disruption) <span className="num ink-2">{(c.fusion.posterior * 100).toFixed(0)}%</span></span>}
+            {t && <span>Transits <span className="num" style={{ color: t.pct_vs_baseline <= -0.25 ? 'var(--crit)' : 'var(--ink-2)' }}>{pct(t.pct_vs_baseline)}</span></span>}
+          </div>
+        </button>
+      );
+    }
+
+    function CommandCenter({ chokes, signals, intel, ticker, health, clusters, routes, graph, online, theme, openChoke, onIngest, ingesting }) {
+      const ordered = useMemo(() => [...(chokes || [])].sort((a, b) => b.effective_risk - a.effective_risk), [chokes]);
+      const flow = (chokes || []).reduce((acc, c) => acc + (c.profile?.oil_mbd || 0), 0);
+      const atRisk = (chokes || []).reduce((acc, c) => acc + (c.profile?.oil_mbd || 0) * (c.fusion?.posterior || 0), 0);
+      const counts = { CRITICAL: 0, ELEVATED: 0, NORMAL: 0 };
+      (chokes || []).forEach((c) => { counts[c.status] += 1; });
+      const q = Object.fromEntries((ticker?.quotes || []).map((x) => [x.symbol, x]));
+      const brent = q['BZ=F'];
+      const top = [...(intel?.events || [])].sort((a, b) => b.threat_severity - a.threat_severity || (b.corroboration || 1) - (a.corroboration || 1)).slice(0, 5);
+      const live = intel?.mode === 'LIVE';
+      const worst = ordered[0];
+
+      return (
+        <div className="space-y-6 fade-in">
+          {worst && (
+            <div className="panel px-5 py-4 flex flex-col md:flex-row md:items-center gap-3 md:gap-5" style={{ borderColor: `color-mix(in srgb, ${STATUS[worst.status].css} 40%, transparent)` }}>
+              <StatusPill status={worst.status}>{worst.status === 'CRITICAL' ? 'Critical alert' : STATUS[worst.status].label}</StatusPill>
+              <div className="flex-1 min-w-0">
+                <div className="text-[14.5px] ink font-medium">{worst.name}: {worst.events[0]?.headline || 'highest risk passage right now'}</div>
+                <div className="text-[12.5px] muted mt-0.5">{worst.events[0]?.tactical_directive}</div>
+              </div>
+              <button className="btn btn-sm shrink-0" onClick={() => openChoke(worst.id)}>See the evidence <Icon name="arrow" size={14} /></button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="panel p-5 col-span-2 lg:col-span-1">
+              <div className="flex items-center gap-2 text-[12px] muted mb-2"><Icon name="oil" size={15} />Oil flow at risk</div>
+              <div className="flex items-baseline gap-2"><span className="text-[34px] font-semibold leading-none ink">{chokes ? atRisk.toFixed(1) : '--'}</span><span className="text-[13px] muted">million bbl/day</span></div>
+              <div className="text-[12px] ink-2 mt-2">Σ P(disruption) × normal flow, of {flow.toFixed(0)} mb/d through the five passages</div>
+            </div>
+            <div className="panel p-5">
+              <div className="text-[12px] muted mb-2">Passages by status</div>
+              <div className="flex items-end gap-5">
+                {['CRITICAL', 'ELEVATED', 'NORMAL'].map((k) => (
+                  <div key={k}><div className="text-[28px] font-semibold leading-none" style={{ color: STATUS[k].css }}>{counts[k]}</div><div className="text-[11.5px] ink-2 mt-1.5">{STATUS[k].label}</div></div>
+                ))}
+              </div>
+            </div>
+            <div className="panel p-5">
+              <div className="text-[12px] muted mb-2">Brent crude</div>
+              <div className="flex items-baseline gap-2"><span className="text-[28px] font-semibold leading-none ink">{fmtQuote(brent)}</span><span className="num text-[12.5px]" style={{ color: changeColor(brent?.change_pct) }}>{fmtChange(brent?.change_pct)}</span></div>
+              <div className="text-[12px] ink-2 mt-2">Seaborne oil benchmark, most exposed to Hormuz</div>
+            </div>
+            <div className="panel p-5">
+              <div className="text-[12px] muted mb-2">AI analysis</div>
+              <div className="text-[18px] font-semibold ink leading-tight">{live ? `Live · ${relTime(intel.scanned_at)}` : 'Baseline briefing'}</div>
+              <div className="text-[12px] ink-2 mt-2">{live ? `${intel.engine === 'GEMINI' ? intel.model : 'Rule engine'} · ${intel.stories_found} stories` : 'Curated from public reporting, 21 Oct 2026'}</div>
+              {!live && <button className="btn btn-sm mt-3" onClick={onIngest} disabled={ingesting || online === false}>{ingesting ? <span className="spinner" /> : null}Analyse live data</button>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
+            <Panel title="Global chokepoint map" sub="Pulsing rings mark elevated and critical passages. Click one for the full analysis." bodyClass="p-3">
+              <MaritimeMap graph={graph} chokes={chokes} signals={signals} online={online} theme={theme} onSelect={openChoke} height={520} defaultShips={false} />
+            </Panel>
+            <Panel title="Risk ranking" sub="Routing risk 0–10, with the Bayesian disruption probability" bodyClass="divide">
+              {!chokes && <div className="p-5 muted text-[13px]">Loading…</div>}
+              {ordered.map((c) => <ChokeRow key={c.id} c={c} onOpen={openChoke} />)}
+            </Panel>
+          </div>
+
+          <div>
+            <div className="flex items-baseline justify-between mb-3">
+              <div className="kicker">AI reasoning pipeline</div>
+              <a href="#/ai" className="src">How each step works</a>
+            </div>
+            <Pipeline intel={intel} health={health} chokes={chokes} clusters={clusters} routes={routes} />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px] gap-6">
+            <Panel title="Top threats" sub={live ? 'Highest-rated stories from the latest analysis' : 'Baseline briefing; run the AI analysis for live stories'} actions={<a href="#/intel" className="btn btn-sm btn-ghost">All news <Icon name="arrow" size={14} /></a>} bodyClass="divide">
+              {top.map((e) => <ThreatRow key={e.id} e={e} openChoke={openChoke} />)}
+            </Panel>
+            <Panel title="Market pulse" sub="Live prices tied to chokepoint risk" actions={<a href="#/markets" className="btn btn-sm btn-ghost">Markets <Icon name="arrow" size={14} /></a>} bodyClass="divide">
+              {['BWET', 'BDRY', 'MAERSK-B.CO', 'FRO', 'GC=F', 'INR=X'].map((s) => q[s]).filter(Boolean).map((x) => (
+                <div key={x.symbol} className="px-5 py-3 flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13.5px] ink">{x.label}</div>
+                    <div className="text-[11.5px] muted truncate">{x.note}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="num text-[13.5px] ink">{fmtQuote(x)}</div>
+                    <div className="num text-[11.5px]" style={{ color: changeColor(x.change_pct) }}>{fmtChange(x.change_pct)}</div>
+                  </div>
+                </div>
+              ))}
+              {!ticker && <div className="p-5 muted text-[13px]">Loading quotes…</div>}
+            </Panel>
+          </div>
+        </div>
+      );
+    }
+
+    function SeverityBadge({ s }) {
+      const st = statusFor(s);
+      return <span className={`pill ${STATUS[st].pill} num`}>{s}/10</span>;
+    }
+
+    function ThreatRow({ e, openChoke }) {
+      return (
+        <div className="px-5 py-3.5 flex gap-4">
+          <div className="pt-0.5"><SeverityBadge s={e.threat_severity} /></div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[14px] ink leading-snug">{e.headline}</div>
+            <div className="mt-1.5 flex items-center gap-x-3 gap-y-1 flex-wrap text-[12px] muted">
+              {e.choke_point_targeted !== 'NONE'
+                ? <button className="ink-2 hover:text-[var(--accent)]" onClick={() => openChoke(e.choke_point_targeted)}>{SHORT[e.choke_point_targeted]}</button>
+                : <span>General</span>}
+              <span>{EVENT_LABEL[e.event_type] || titleCase(e.event_type)}</span>
+              {e.corroboration > 1 && <span>{e.corroboration} outlets</span>}
+              <span>{e.verified_citation?.publisher}</span>
+              <SourceLink url={e.verified_citation?.url} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // PAGE: CHOKEPOINTS
+    // =====================================================================
+    function ChokepointPage({ id, chokes, signals, clusters, graph, online, theme, setChoke, ais }) {
+      const list = useMemo(() => CHOKE_ORDER.map((k) => (chokes || []).find((c) => c.id === k)).filter(Boolean), [chokes]);
+      const c = list.find((x) => x.id === id) || list[0];
+      if (!c) return <Empty>Loading chokepoints…</Empty>;
+      const sig = signals?.chokepoints.find((x) => x.id === c.id);
+      const fusion = sig?.fusion;
+      const t = sig?.traffic;
+      const p = c.profile || {};
+      const goods = (clusters?.commodities || []).filter((g) => (g.exposure || {})[c.id]).sort((a, b) => b.exposure[c.id] - a.exposure[c.id]);
+      return (
+        <div className="space-y-6 fade-in">
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {list.map((x) => (
+              <button key={x.id} onClick={() => setChoke(x.id)} className={`chipbtn !py-2 !px-3.5 ${x.id === c.id ? 'on' : ''}`}>
+                <span className="w-2 h-2 rounded-full" style={{ background: STATUS[x.status].css }} />{x.name}<span className="num muted">{x.effective_risk.toFixed(0)}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="panel p-6">
+            <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h2 className="text-[24px] font-semibold ink">{c.name}</h2>
+                  <StatusPill status={c.status} />
+                  {t?.change_point && <span className="pill pill-crit">Disrupted since {fmtDate(t.change_point.date)}</span>}
+                </div>
+                <p className="text-[14px] ink-2 mt-2 leading-relaxed max-w-3xl">{c.strategic_relevance}</p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-4 shrink-0">
+                <Stat label="Routing risk" value={c.effective_risk.toFixed(1)} unit="/ 10" tone={STATUS[c.status].css} />
+                <Stat label="P(disruption)" value={c.fusion ? `${(c.fusion.posterior * 100).toFixed(0)}%` : '--'} sub={c.fusion ? `${c.fusion.confidence} confidence` : null} />
+                <Stat label="Transits / day" value={t ? t.recent_7d_mean.toFixed(0) : '--'} sub={t ? <>normal {t.baseline_median.toFixed(0)} · <span style={{ color: t.pct_vs_baseline <= -0.25 ? 'var(--crit)' : 'inherit' }}>{pct(t.pct_vs_baseline)}</span></> : 'needs live data'} />
+                <Stat label="Route penalty" value={c.routing_penalty_days.toFixed(1)} unit="days" sub="added to A* cost" />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-6">
+            <div className="space-y-6 min-w-0">
+              <Panel title="How the AI reached this rating" sub="Naive-Bayes fusion: each independent piece of evidence adds its log-likelihood ratio to the prior. Red pushes the probability up, green pulls it down.">
+                {fusion ? <EvidenceWaterfall fusion={fusion} /> : <Empty>Loading evidence…</Empty>}
+              </Panel>
+              <Panel title="Ship transits through the passage" sub={t ? `IMF PortWatch daily AIS counts to ${fmtDate(t.as_of)} (${t.data_lag_days} days lag). Line: 7-day mean; band: Holt 14-day forecast, 80% interval.` : 'Daily AIS transit counts from IMF PortWatch'}>
+                {t ? (
+                  <>
+                    <TrafficChart t={t} />
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t hair">
+                      <Stat label="Tankers vs normal" value={pct(t.tanker_pct_vs_baseline)} />
+                      <Stat label="Containers vs normal" value={pct(t.container_pct_vs_baseline)} />
+                      <Stat label="Anomaly score" value={`${t.robust_z >= 0 ? '+' : ''}${t.robust_z.toFixed(1)}`} unit="z" sub={t.anomaly ? 'unusual (|z| ≥ 3)' : 'within normal range'} />
+                      <Stat label="Trend" value={titleCase(t.direction)} sub={`Holt α ${t.forecast_model.alpha}, β ${t.forecast_model.beta}`} />
+                    </div>
+                  </>
+                ) : <Empty>Run the AI analysis to load ship-traffic history for this passage.</Empty>}
+              </Panel>
+            </div>
+            <div className="space-y-6">
+              <Panel title="Passage profile" sub="Reference figures (EIA 2023 oil flows; canal authorities)" bodyClass="divide">
+                {[
+                  ['Oil flow (normal)', p.oil_mbd != null ? `${p.oil_mbd} mb/d` : '--'],
+                  ['Share of trade', p.share || '--'],
+                  ['Normal transits', p.normal_transits_day ? `~${p.normal_transits_day} ships/day` : '--'],
+                  ['Narrowest width', p.width_km != null ? (p.width_km < 1 ? `${Math.round(p.width_km * 1000)} m` : `${p.width_km} km`) : '--'],
+                  ['Main cargo', p.carries || '--'],
+                  ['Structural hazard', `${c.base_hazard} / 10`],
+                  ['Coordinates', `${c.lat.toFixed(2)}°, ${c.lng.toFixed(2)}°`],
+                ].map(([k, v]) => (
+                  <div key={k} className="px-5 py-2.5 flex items-start justify-between gap-4 text-[13px]"><span className="muted">{k}</span><span className="ink text-right">{v}</span></div>
+                ))}
+              </Panel>
+              <Panel title="Goods exposed" sub="Share of each good's sea trade using this passage; supply-hit chance from the noisy-OR model" bodyClass="divide">
+                {goods.length === 0 && <div className="px-5 py-4 text-[13px] muted">No tracked goods depend heavily on this passage.</div>}
+                {goods.map((g) => (
+                  <div key={g.code} className="px-5 py-2.5">
+                    <div className="flex items-center justify-between text-[13px]"><span className="ink">{g.name}</span><span className="num ink-2">{(g.exposure[c.id] * 100).toFixed(0)}%</span></div>
+                    <div className="track mt-1.5 !h-[5px]"><span style={{ width: `${g.exposure[c.id] * 100}%`, background: 'var(--accent)' }} /></div>
+                    <div className="text-[11.5px] muted mt-1">Supply hit {g.supply_hit_probability != null ? `${(g.supply_hit_probability * 100).toFixed(0)}%` : '--'} · {CLUSTER[g.cluster]?.label}</div>
+                  </div>
+                ))}
+              </Panel>
+              <Panel title="Latest reports" sub={`${c.events.length} stor${c.events.length === 1 ? 'y' : 'ies'} for this passage`} bodyClass="divide">
+                {c.events.length === 0 && <div className="px-5 py-4 text-[13px] muted">Nothing reported right now.</div>}
+                {c.events.slice(0, 5).map((e) => (
+                  <div key={e.id} className="px-5 py-3.5">
+                    <div className="flex items-start gap-3"><SeverityBadge s={e.threat_severity} /><div className="text-[13.5px] ink leading-snug">{e.headline}</div></div>
+                    <div className="text-[12.5px] ink-2 mt-2 leading-relaxed">{e.tactical_directive}</div>
+                    <div className="flex items-center justify-between mt-2 text-[12px] muted"><span>{e.verified_citation?.publisher}{e.corroboration > 1 ? ` + ${e.corroboration - 1} more` : ''}</span><SourceLink url={e.verified_citation?.url} /></div>
+                  </div>
+                ))}
+              </Panel>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // PAGE: ROUTE PLANNER (A*)
+    // =====================================================================
+    const PRESETS = [['SHANGHAI', 'ROTTERDAM'], ['DUBAI', 'NEW_YORK'], ['MUMBAI', 'LONDON'], ['TOKYO', 'NEW_YORK'], ['LOS_ANGELES', 'ROTTERDAM']];
+    const SCENARIOS = [
+      { id: '', label: 'Current situation' },
+      { id: 'HORMUZ:0', label: 'Hormuz reopens' },
+      { id: 'SUEZ:10,BAB_EL_MANDEB:10', label: 'Red Sea and Suez closed' },
+      { id: 'PANAMA:9', label: 'Panama drought worsens' },
+      { id: 'MALACCA:9', label: 'Malacca piracy surge' },
+      { id: 'SUEZ:0,BAB_EL_MANDEB:0,HORMUZ:0,PANAMA:0,MALACCA:0', label: 'Everything calm' },
+    ];
+    const COST_PARTS = [['sail', 'Sailing', 'var(--s1)'], ['dwell', 'Canal waiting', 'var(--s3)'], ['risk', 'Risk penalty', 'var(--s2)']];
+
+    function CostBar({ route, max }) {
+      const sail = route.legs.reduce((a, l) => a + l.transit_days, 0);
+      const dwell = route.legs.reduce((a, l) => a + l.dwell_days, 0);
+      const risk = route.legs.reduce((a, l) => a + l.risk_penalty_days, 0);
+      const parts = { sail, dwell, risk };
+      return (
+        <div>
+          <div className="flex h-[14px] gap-[2px]" style={{ width: `${Math.max(8, ((sail + dwell + risk) / max) * 100)}%` }}>
+            {COST_PARTS.map(([k, label, col]) => parts[k] > 0.05 && (
+              <span key={k} title={`${label}: ${parts[k].toFixed(1)} days`} className="h-full first:rounded-l-[4px] last:rounded-r-[4px]" style={{ flex: parts[k], background: col }} />
+            ))}
+          </div>
+          <div className="flex gap-4 mt-1.5 text-[11.5px] muted flex-wrap">
+            {COST_PARTS.map(([k, label]) => <span key={k}>{label} <span className="num ink-2">{parts[k].toFixed(1)} d</span></span>)}
+          </div>
+        </div>
+      );
+    }
+
+    function RouteCard({ graph, kind, route, comparison, maxCost }) {
+      const safe = kind === 'safe';
+      const hazards = route.threat_exposure.map((t) => t.node);
+      const tone = route.safety_index >= 70 ? 'var(--ok)' : route.safety_index >= 45 ? 'var(--elev)' : 'var(--crit)';
+      return (
+        <div className="panel p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            {safe ? <span className="inline-block w-6 h-[3px] rounded" style={{ background: '#4CC3EE' }} /> : <span className="inline-block w-6 border-t-2 border-dashed" style={{ borderColor: '#F2A93B' }} />}
+            <div className="text-[15px] font-semibold ink">{safe ? 'Safest route' : 'Fastest route'}</div>
+            <span className="text-[12px] muted">{safe ? 'risk-weighted A* (λ = 1)' : 'time-only A* (λ = 0)'}</span>
+            {safe && !comparison.converged && <span className="pill pill-accent ml-auto">Recommended</span>}
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <Stat label="Travel time" value={route.eta_days} unit="days" />
+            <Stat label="Distance" value={fmtNum(route.nautical_miles)} unit="nm" />
+            <Stat label="Safety score" value={route.safety_index} unit="/ 100" tone={tone} />
+          </div>
+          <div>
+            <div className="text-[12px] muted mb-1.5">Path</div>
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px]">
+              {route.path.map((n, i) => (
+                <React.Fragment key={i}>
+                  <span style={{ color: hazards.includes(n) ? 'var(--crit)' : 'var(--ink)' }}>{nodeName(graph, n)}</span>
+                  {i < route.path.length - 1 && <span className="muted">→</span>}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[12px] muted mb-1.5">A* objective cost <span className="num ink-2">{route.search.objective_cost_days} days</span></div>
+            <CostBar route={route} max={maxCost} />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {route.threat_exposure.length === 0
+              ? <span className="text-[12.5px] muted">Crosses no rated hotspot.</span>
+              : route.threat_exposure.map((h) => <span key={h.node} className={`pill ${STATUS[statusFor(h.severity)].pill}`}>{nodeName(graph, h.node)} <span className="num">{h.severity}</span></span>)}
+          </div>
+        </div>
+      );
+    }
+
+    function SearchTrace({ graph, routes }) {
+      return (
+        <Panel title="Inside the A* search" sub="Nodes in the order A* took them off the open set (lowest f = g + h first). The heuristic is the great-circle sailing time, which never overestimates.">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {[['Safest', routes.safe_route], ['Fastest', routes.commercial_route]].map(([label, r]) => (
+              <div key={label}>
+                <div className="flex items-baseline justify-between mb-2.5">
+                  <div className="text-[13.5px] font-medium ink">{label}</div>
+                  <div className="text-[12px] muted">expanded <span className="num ink-2">{r.search.nodes_expanded}</span> · generated <span className="num ink-2">{r.search.nodes_generated}</span> · max open <span className="num ink-2">{r.search.max_open_set}</span></div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {r.search.expansion_order.map((n, i) => {
+                    const onPath = r.path.includes(n);
+                    return (
+                      <span key={i} className={`pill ${onPath ? 'pill-accent' : 'pill-neutral'}`}>
+                        <span className="num text-[10.5px] opacity-70">{i + 1}</span>{nodeName(graph, n)}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <details className="mt-5 pt-4 border-t hair">
+            <summary className="text-[13px] ink-2 hover:text-[var(--ink)]">Cost model and formulas</summary>
+            <div className="mt-3 space-y-1.5 text-[12.5px]">
+              {Object.entries(routes.cost_model).map(([k, v]) => (
+                <div key={k} className="grid grid-cols-[130px_1fr] gap-3"><span className="muted">{titleCase(k)}</span><span className="mono ink-2 break-words">{String(v)}</span></div>
+              ))}
+            </div>
+          </details>
+        </Panel>
+      );
+    }
+
+    function RoutePlanner({ graph, chokes, routes, onCompute, online, theme, signals }) {
+      const [start, setStart] = useState(routes?.start || 'SHANGHAI');
+      const [end, setEnd] = useState(routes?.end || 'ROTTERDAM');
+      const [scenario, setScenario] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+      const nodes = useMemo(() => (graph ? [...graph.nodes].sort((a, b) => a.name.localeCompare(b.name)) : []), [graph]);
+      const ports = nodes.filter((n) => n.kind === 'PORT');
+
+      const run = useCallback(async (s = start, e = end, sc = scenario) => {
+        if (s === e) { setError('Choose two different ports.'); return; }
+        setLoading(true); setError(null);
+        try { await onCompute(s, e, sc); }
+        catch (err) { setError(String(err.message || err)); }
+        setLoading(false);
+      }, [start, end, scenario, onCompute]);
+
+      const cmp = routes?.comparison;
+      const maxCost = routes?.safe_route ? Math.max(...[routes.safe_route, routes.commercial_route].map((r) => r.legs.reduce((a, l) => a + l.transit_days + l.dwell_days + l.risk_penalty_days, 0))) : 1;
+      const override = routes?.override || {};
+      const scenChokes = chokes && Object.keys(override).length ? chokes.map((c) => (override[c.id] != null ? { ...c, effective_risk: Math.max(c.base_hazard, override[c.id]), status: statusFor(Math.max(c.base_hazard, override[c.id])) } : c)) : chokes;
+
+      return (
+        <div className="space-y-6 fade-in">
+          <div className="panel p-5 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto] gap-3 items-end">
+              <div><label className="label">From</label><select className="field" value={start} onChange={(e) => setStart(e.target.value)}>{ports.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}</select></div>
+              <button className="btn btn-ghost !px-2 hidden md:inline-flex mb-0.5" onClick={() => { setStart(end); setEnd(start); }} aria-label="Swap ports" title="Swap">⇄</button>
+              <div><label className="label">To</label><select className="field" value={end} onChange={(e) => setEnd(e.target.value)}>{ports.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}</select></div>
+              <button className="btn btn-primary" disabled={loading || !graph || online === false} onClick={() => run()}>
+                {loading && <span className="spinner" />}{loading ? 'Searching…' : 'Find routes'}
+              </button>
+            </div>
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+              <span className="text-[12px] muted shrink-0 w-[72px]">What if</span>
+              <div className="flex gap-1.5 flex-wrap">
+                {SCENARIOS.map((s) => <button key={s.id} className={`chipbtn ${scenario === s.id ? 'on' : ''}`} onClick={() => { setScenario(s.id); run(start, end, s.id); }} disabled={loading}>{s.label}</button>)}
+              </div>
+            </div>
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+              <span className="text-[12px] muted shrink-0 w-[72px]">Popular</span>
+              <div className="flex gap-1.5 flex-wrap">
+                {PRESETS.map(([s, e]) => (
+                  <button key={s + e} className="chipbtn" disabled={loading || !graph} onClick={() => { setStart(s); setEnd(e); run(s, e, scenario); }}>{nodeName(graph, s)} → {nodeName(graph, e)}</button>
+                ))}
+              </div>
+            </div>
+            {error && <div className="text-[13px]" style={{ color: 'var(--crit)' }}>{error}</div>}
+          </div>
+
+          {routes?.safe_route && (
+            <div className={`panel px-5 py-4 flex flex-col md:flex-row md:items-center gap-4`} style={!cmp.converged ? { borderColor: 'color-mix(in srgb, var(--accent) 40%, transparent)' } : null}>
+              <p className="text-[14px] ink flex-1">{cmp.verdict}</p>
+              <div className="flex gap-6 text-[13px] muted shrink-0">
+                <span>Time <span className="num ink">{cmp.delta_eta_days >= 0 ? '+' : ''}{cmp.delta_eta_days} d</span></span>
+                <span>Distance <span className="num ink">{cmp.delta_nautical_miles >= 0 ? '+' : ''}{fmtNum(cmp.delta_nautical_miles)} nm</span></span>
+                <span>Safety <span className="num" style={{ color: 'var(--ok)' }}>{cmp.delta_safety >= 0 ? '+' : ''}{cmp.delta_safety}</span></span>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_440px] gap-6">
+            <div className="panel p-3 min-w-0"><MaritimeMap graph={graph} chokes={scenChokes} routes={routes} signals={signals} online={online} theme={theme} height={600} defaultShips={false} /></div>
+            <div className="space-y-4">
+              {routes?.safe_route ? (
+                <>
+                  <RouteCard graph={graph} kind="safe" route={routes.safe_route} comparison={cmp} maxCost={maxCost} />
+                  {!cmp.converged && <RouteCard graph={graph} kind="direct" route={routes.commercial_route} comparison={cmp} maxCost={maxCost} />}
+                  {cmp.converged && <div className="panel-2 p-4 text-[13px] ink-2">The fastest route is the same path, so there is nothing to trade off.</div>}
+                </>
+              ) : <Empty>{loading ? 'Searching…' : 'Pick two ports to compare routes.'}</Empty>}
+            </div>
+          </div>
+          {Object.keys(override).length > 0 && <p className="text-[12.5px] muted">What-if applied: {Object.entries(override).map(([k, v]) => `${nodeName(graph, k)} at risk ${v}/10`).join(', ')}.</p>}
+          {routes?.safe_route && <SearchTrace graph={graph} routes={routes} />}
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // PAGE: THREAT INTELLIGENCE
+    // =====================================================================
+    function IntelCard({ e, openChoke }) {
+      const baseline = e.source_mode === 'BASELINE';
+      const gem = e.analysis_engine?.startsWith('GEMINI');
+      return (
+        <article className="panel p-5 flex flex-col gap-3.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <SeverityBadge s={e.threat_severity} />
+            {e.choke_point_targeted !== 'NONE'
+              ? <button className="chipbtn !py-1" onClick={() => openChoke(e.choke_point_targeted)}>{SHORT[e.choke_point_targeted]}</button>
+              : <span className="pill pill-neutral">General</span>}
+            <span className="text-[12px] muted">{EVENT_LABEL[e.event_type] || titleCase(e.event_type)}</span>
+            <span className={`pill ml-auto ${baseline ? 'pill-neutral' : gem ? 'pill-accent' : 'pill-neutral'}`} title={e.analysis_engine}>{baseline ? 'Baseline' : gem ? 'LLM rated' : 'Rule engine'}</span>
+          </div>
+          <div>
+            <h3 className="text-[15px] font-semibold ink leading-snug">{e.headline}</h3>
+            {e.summary && <p className="text-[13px] ink-2 leading-relaxed mt-1.5 clamp3">{e.summary}</p>}
+          </div>
+          <div className="panel-2 px-4 py-3">
+            <div className="kicker mb-1">Recommended action</div>
+            <div className="text-[13px] ink leading-relaxed">{e.tactical_directive}</div>
+            {e.analyst_note && gem && <div className="text-[12px] muted mt-2 leading-relaxed">{e.analyst_note}</div>}
+          </div>
+          {e.rule_trace?.length > 0 && (
+            <div>
+              <div className="text-[11.5px] muted mb-1.5">Expert-system rules fired</div>
+              <div className="flex flex-wrap gap-1.5">{e.rule_trace.map((r) => <span key={r} className="pill pill-neutral mono !text-[11px]" title={r}>{r.split(' ')[0]}<span className="font-sans opacity-80">{r.slice(r.indexOf(' ') + 1)}</span></span>)}</div>
+            </div>
+          )}
+          {e.coverage?.length > 1 && (
+            <details className="text-[12px]">
+              <summary className="ink-2 hover:text-[var(--ink)]">{e.corroboration} outlets: {e.coverage.slice(0, 4).map((c) => c.publisher).join(', ')}{e.coverage.length > 4 ? '…' : ''}</summary>
+              <ul className="mt-2 space-y-1.5">
+                {e.coverage.slice(1).map((c, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3"><span className="ink-2 leading-snug"><span className="ink">{c.publisher}:</span> {c.title}</span><SourceLink url={c.url} /></li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <div className="flex items-center justify-between gap-3 mt-auto text-[12px] muted">
+            <span>{e.verified_citation?.publisher}{e.verified_citation?.published_timestamp ? ` · ${relTime(e.verified_citation.published_timestamp)}` : ''}{e.confidence ? ` · confidence ${(e.confidence * 100).toFixed(0)}%` : ''}</span>
+            <SourceLink url={e.verified_citation?.url} />
+          </div>
+        </article>
+      );
+    }
+
+    function SourceHealth({ intel }) {
+      const groups = [
+        ['News feeds', intel.sources.map((s) => ({ name: s.publisher, ok: s.ok, info: s.ok ? `${s.items} items` : s.error }))],
+        ['Ship traffic (IMF PortWatch)', (intel.traffic_sources || []).map((s) => ({ name: SHORT[s.node] || titleCase(s.node), ok: s.ok, info: s.ok ? `${s.days} days` : s.error }))],
+        ['Markets (Yahoo Finance)', (intel.market_sources || []).map((s) => ({ name: s.symbol, ok: s.ok, info: s.ok ? `${s.points} days` : s.error }))],
+      ];
+      return (
+        <details className="panel">
+          <summary className="px-5 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px]">
+            <span className="ink font-medium">Sensor health</span>
+            {groups.map(([label, g]) => <span key={label} className="muted">{label.split(' (')[0]} <span className="num ink-2">{g.filter((x) => x.ok).length}/{g.length}</span></span>)}
+            {intel.sweep_s != null && <span className="muted ml-auto">fetched in <span className="num">{intel.sweep_s}s</span></span>}
+          </summary>
+          <div className="border-t hair px-5 py-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+            {groups.map(([label, g]) => (
+              <div key={label}>
+                <div className="kicker mb-2">{label}</div>
+                <ul className="space-y-1">
+                  {g.map((x, i) => (
+                    <li key={i} className="flex items-center gap-2 text-[12px]">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: x.ok ? 'var(--ok)' : 'var(--crit)' }} />
+                      <span className="ink-2 truncate">{x.name}</span><span className="muted ml-auto shrink-0">{x.info}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </details>
+      );
+    }
+
+    function IntelPage({ intel, openChoke, onIngest, ingesting, online }) {
+      const [where, setWhere] = useState('ALL');
+      const [minSev, setMinSev] = useState(3);
+      const events = intel?.events || [];
+      const live = intel?.mode === 'LIVE';
+      const shown = events.filter((e) => e.threat_severity >= minSev && (where === 'ALL' || e.choke_point_targeted === where));
+      const countFor = (k) => events.filter((e) => e.threat_severity >= minSev && (k === 'ALL' || e.choke_point_targeted === k)).length;
+      return (
+        <div className="space-y-6 fade-in">
+          <div className="panel p-5 grid grid-cols-2 md:grid-cols-5 gap-5">
+            <Stat label="Mode" value={live ? 'Live' : 'Baseline'} sub={live ? relTime(intel.scanned_at) : 'curated, 21 Oct 2026'} />
+            <Stat label="Articles read" value={live ? fmtNum(intel.articles_ingested) : '--'} sub={live ? `${intel.sources_responded}/${intel.sources_total} feeds` : null} />
+            <Stat label="Stories" value={live ? intel.stories_found : events.length} sub="after TF-IDF clustering" />
+            <Stat label="Rated by" value={live ? (intel.engine === 'GEMINI' ? 'LLM' : 'Rules') : '--'} sub={live ? (intel.model || 'expert system') : null} />
+            <div className="flex items-end"><button className="btn btn-primary w-full" onClick={onIngest} disabled={ingesting || online === false}>{ingesting ? <span className="spinner" /> : <Icon name="refresh" size={16} stroke={2} />}{ingesting ? 'Analysing…' : live ? 'Refresh' : 'Analyse live news'}</button></div>
+            {intel?.llm_note && <div className="col-span-full text-[12px] muted">{intel.llm_note}</div>}
+          </div>
+          {live && <SourceHealth intel={intel} />}
+
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+            <div className="flex gap-1.5 flex-wrap">
+              {['ALL', ...CHOKE_ORDER, 'NONE'].map((k) => (
+                <button key={k} className={`chipbtn ${where === k ? 'on' : ''}`} onClick={() => setWhere(k)}>{k === 'ALL' ? 'All passages' : k === 'NONE' ? 'General' : SHORT[k]}<span className="num muted">{countFor(k)}</span></button>
+              ))}
+            </div>
+            <div className="seg lg:ml-auto">
+              {[[1, 'All'], [3, '3+'], [5, '5+'], [8, '8+']].map(([v, l]) => <button key={v} className={minSev === v ? 'on' : ''} onClick={() => setMinSev(v)}>Severity {l}</button>)}
+            </div>
+          </div>
+
+          {!intel && <Empty>Loading intelligence…</Empty>}
+          {intel && shown.length === 0 && <Empty>No stories match these filters.</Empty>}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {shown.map((e) => <IntelCard key={e.id} e={e} openChoke={openChoke} />)}
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // PAGE: MARKETS
+    // =====================================================================
+    const MARKET_GROUPS = [
+      ['Energy', ['BRENT', 'TTF', 'HH']],
+      ['Freight and shipping', ['TANKER_FRT', 'BULK_FRT', 'CONT_EQ', 'TANK_EQ']],
+      ['Grains and metals', ['WHEAT', 'SOY', 'CORN', 'CU', 'AL', 'FE']],
+    ];
+    const TRADE_FINANCE_PANELS = [
+      ['Shipping and freight', 'Freight rates and shipping-line shares move first when a passage is disrupted.', ['BDRY', 'BWET', 'MAERSK-B.CO', 'HLAG.DE', '1919.HK', 'ZIM', 'FRO']],
+      ['Energy and safe havens', 'Oil reacts to Hormuz and Red Sea risk; gold and silver rise with geopolitical risk.', ['BZ=F', 'CL=F', 'NG=F', 'GC=F', 'SI=F', 'HG=F']],
+      ['Currencies and rates', 'Trade is priced in dollars, so the dollar and rates set the cost of cargo and ship finance.', ['DX-Y.NYB', 'INR=X', 'CNY=X', 'EURUSD=X', 'JPY=X', '^TNX']],
+      ['Global equity indices', 'Stock markets in the economies that depend most on these sea lanes.', ['^GSPC', '^BSESN', '^NSEI', '^N225', '^HSI', '000001.SS', '^GDAXI', '^FTSE']],
+    ];
+
+    function MarketsPage({ markets, ticker, onIngest, ingesting, online }) {
+      const by = Object.fromEntries((markets?.series || []).map((s) => [s.code, s]));
+      const loaded = markets?.series?.some((s) => s.stats);
+      const q = Object.fromEntries((ticker?.quotes || []).map((x) => [x.symbol, x]));
+      return (
+        <div className="space-y-8 fade-in">
+          <div>
+            <div className="flex items-baseline justify-between mb-3">
+              <div className="kicker">Live quotes</div>
+              {ticker?.fetched_at && <div className="text-[12px] muted">Yahoo Finance · updated {clockTime(ticker.fetched_at)}</div>}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-5">
+              {TRADE_FINANCE_PANELS.map(([title, blurb, symbols]) => (
+                <Panel key={title} title={title} sub={blurb} bodyClass="divide">
+                  {symbols.map((s) => q[s]).filter(Boolean).map((x) => (
+                    <div key={x.symbol} className="px-5 py-2.5 flex items-start justify-between gap-3">
+                      <div className="min-w-0"><div className="text-[13px] ink">{x.label}</div><div className="text-[11.5px] muted leading-snug">{x.note}</div></div>
+                      <div className="text-right shrink-0"><div className="num text-[13px] ink">{fmtQuote(x)}</div><div className="num text-[11.5px]" style={{ color: changeColor(x.change_pct) }}>{fmtChange(x.change_pct) || '--'}</div></div>
+                    </div>
+                  ))}
+                  {!ticker && <div className="px-5 py-4 text-[13px] muted">Loading…</div>}
+                </Panel>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline justify-between mb-3">
+              <div className="kicker">90-day history and stress signal</div>
+              <div className="text-[12px] muted">Badge: today's price vs its 3-month average, in standard deviations</div>
+            </div>
+            {!loaded && <Empty action={<button className="btn btn-primary" onClick={onIngest} disabled={ingesting || online === false}>{ingesting && <span className="spinner" />}Run AI analysis</button>}>Price history is loaded with the AI analysis. It feeds the market evidence in the Bayesian fusion and the goods clustering.</Empty>}
+            {loaded && MARKET_GROUPS.map(([g, codes]) => (
+              <div key={g} className="mb-6">
+                <div className="text-[13px] font-medium ink-2 mb-2.5">{g}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
+                  {codes.map((c) => by[c]).filter((s) => s && s.stats).map((s) => {
+                    const st = s.stats, z = st.z_score_3m;
+                    const tone = Math.abs(z) >= 1.5 ? (z > 0 ? 'pill-crit' : 'pill-ok') : 'pill-neutral';
+                    return (
+                      <div key={s.code} className="panel p-4 flex flex-col gap-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-[13.5px] ink leading-snug">{s.name}</div>
+                          <span className={`pill ${tone} num !py-0.5`}>{z >= 0 ? '+' : ''}{z.toFixed(1)}σ</span>
+                        </div>
+                        <div className="flex items-baseline gap-2"><span className="num text-[19px] ink">{fmtPrice(st.last)}</span><span className="text-[11px] muted">{s.unit}</span></div>
+                        <Sparkline data={st.spark} />
+                        <div className="flex justify-between text-[11.5px] muted">
+                          <span>1 m <span className="num ink-2">{pct(st.ret_1m, 1)}</span></span>
+                          <span>vol <span className="num ink-2">{(st.vol_30d_ann * 100).toFixed(0)}%</span></span>
+                          <span className="num">{st.as_of}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // PAGE: GOODS AT RISK (K-MEANS + NOISY-OR)
+    // =====================================================================
+    const CLUSTER = {
+      HIGH_SYSTEMIC_RISK: { label: 'High risk', pill: 'pill-crit', css: 'var(--crit)' },
+      ELEVATED_WATCH: { label: 'Watch', pill: 'pill-elev', css: 'var(--elev)' },
+      STABLE_NORMAL_FLOW: { label: 'Stable', pill: 'pill-ok', css: 'var(--ok)' },
+    };
+
+    function Scatter({ data }) {
+      const W = 520, H = 360, m = { l: 46, r: 18, t: 16, b: 42 };
+      const [ref, toLocal] = useSvgPointer(W);
+      const [hover, setHover] = useState(null);
+      const sx = (v) => m.l + (v / 100) * (W - m.l - m.r);
+      const sy = (v) => H - m.b - (v / 100) * (H - m.t - m.b);
+      // label a point only if its label box does not collide with one already placed (hover shows the rest)
+      const placed = [];
+      const labelled = new Set();
+      [...data.commodities].sort((a, b) => (b.supply_hit_probability || 0) - (a.supply_hit_probability || 0)).forEach((c) => {
+        const name = c.name.split(' (')[0];
+        const w = name.length * 6.2, x = sx(c.volatility), y = sy(c.stress);
+        const dots = data.commodities.filter((o) => o.code !== c.code).map((o) => [sx(o.volatility) - 5, sy(o.stress) - 5, sx(o.volatility) + 5, sy(o.stress) + 5]);
+        const hits = (box) => [...placed, ...dots].some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
+        const options = [[[x + 8, y - 8, x + 10 + w, y + 6], ''], [[x - 10 - w, y - 8, x - 8, y + 6], ':L']]
+          .filter(([b]) => b[0] >= m.l && b[2] <= W - m.r);
+        const pick = options.find(([b]) => !hits(b));
+        if (!pick) return;
+        placed.push(pick[0]);
+        labelled.add(c.code + pick[1]);
+      });
+      return (
+        <div className="relative">
+          <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" role="img" aria-label="Goods by price swings and supply strain">
+            {[0, 25, 50, 75, 100].map((g) => (
+              <g key={g}>
+                <line x1={sx(g)} x2={sx(g)} y1={m.t} y2={H - m.b} stroke="var(--grid)" />
+                <line x1={m.l} x2={W - m.r} y1={sy(g)} y2={sy(g)} stroke="var(--grid)" />
+                <text x={sx(g)} y={H - m.b + 17} textAnchor="middle" fontSize="11" fill="var(--muted)" fontFamily="IBM Plex Mono">{g}</text>
+                <text x={m.l - 9} y={sy(g) + 4} textAnchor="end" fontSize="11" fill="var(--muted)" fontFamily="IBM Plex Mono">{g}</text>
+              </g>
+            ))}
+            <text x={(W + m.l) / 2} y={H - 6} textAnchor="middle" fontSize="12" fill="var(--ink-2)">Price swings (volatility score)</text>
+            <text x={13} y={(H - m.b + m.t) / 2} textAnchor="middle" fontSize="12" fill="var(--ink-2)" transform={`rotate(-90 13 ${(H - m.b + m.t) / 2})`}>Supply strain</text>
+            {data.commodities.map((c) => {
+              const cl = data.clusters.find((k) => k.label === c.cluster);
+              return cl && <line key={'l' + c.code} x1={sx(c.volatility)} y1={sy(c.stress)} x2={sx(cl.centroid[0])} y2={sy(cl.centroid[1])} stroke={CLUSTER[c.cluster].css} strokeOpacity="0.3" />;
+            })}
+            {data.clusters.map((k) => {
+              const x = sx(k.centroid[0]), y = sy(k.centroid[1]), col = CLUSTER[k.label].css;
+              return <g key={k.label}><line x1={x - 8} x2={x + 8} y1={y} y2={y} stroke={col} strokeWidth="2" /><line x1={x} x2={x} y1={y - 8} y2={y + 8} stroke={col} strokeWidth="2" /></g>;
+            })}
+            {data.commodities.map((c) => (
+              <g key={c.code} onMouseEnter={(e) => { const p = toLocal(e); setHover({ c, px: (sx(c.volatility) / W) * p.w, py: (sy(c.stress) / H) * p.h }); }} onMouseLeave={() => setHover(null)} style={{ cursor: 'default' }}>
+                <circle cx={sx(c.volatility)} cy={sy(c.stress)} r="12" fill="transparent" />
+                <circle cx={sx(c.volatility)} cy={sy(c.stress)} r={hover?.c.code === c.code ? 6.5 : 5} fill={CLUSTER[c.cluster].css} stroke="var(--panel)" strokeWidth="2" />
+                {labelled.has(c.code) && <text x={sx(c.volatility) + 9} y={sy(c.stress) + 4} fontSize="11" fill="var(--ink-2)">{c.name.split(' (')[0]}</text>}
+                {labelled.has(c.code + ':L') && <text x={sx(c.volatility) - 9} y={sy(c.stress) + 4} fontSize="11" fill="var(--ink-2)" textAnchor="end">{c.name.split(' (')[0]}</text>}
+              </g>
+            ))}
+          </svg>
+          {hover && (
+            <div className="tip" style={{ left: hover.px, top: hover.py }}>
+              <div className="font-medium">{hover.c.name}</div>
+              <div><span className="t-k">Price swings</span> <span className="num">{hover.c.volatility}</span> · <span className="t-k">strain</span> <span className="num">{hover.c.stress}</span></div>
+              <div><span className="t-k">Group</span> {CLUSTER[hover.c.cluster].label} · <span className="t-k">supply hit</span> <span className="num">{hover.c.supply_hit_probability != null ? `${(hover.c.supply_hit_probability * 100).toFixed(0)}%` : '--'}</span></div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function ExposureHeat({ data, chokes }) {
+      const rows = [...data.commodities].sort((a, b) => (b.supply_hit_probability || 0) - (a.supply_hit_probability || 0));
+      const risk = Object.fromEntries((chokes || []).map((c) => [c.id, c.fusion?.posterior]));
+      return (
+        <div className="overflow-x-auto">
+          <table className="tbl">
+            <thead><tr><th>Good</th>{CHOKE_ORDER.map((k) => <th key={k} className="text-center !px-1">{k === 'BAB_EL_MANDEB' ? 'Bab-el-M.' : SHORT[k]}<div className="num font-normal">{risk[k] != null ? `${(risk[k] * 100).toFixed(0)}%` : ''}</div></th>)}<th className="text-right">Supply hit</th></tr></thead>
+            <tbody>
+              {rows.map((g) => (
+                <tr key={g.code}>
+                  <td className="ink whitespace-nowrap">{g.name}</td>
+                  {CHOKE_ORDER.map((k) => {
+                    const w = (g.exposure || {})[k] || 0;
+                    return <td key={k} className="text-center num !py-1.5 !px-1" title={`${Math.round(w * 100)}% of ${g.name} sea trade uses ${SHORT[k]}`}>
+                      <span className="inline-flex items-center justify-center w-[44px] h-[24px] rounded-[5px] text-[11px]" style={{ background: w ? `color-mix(in srgb, var(--accent) ${Math.round(12 + w * 70)}%, transparent)` : 'transparent', color: w >= 0.5 ? 'var(--accent-ink)' : w ? 'var(--ink)' : 'var(--muted)' }}>{w ? `${Math.round(w * 100)}%` : '·'}</span>
+                    </td>;
+                  })}
+                  <td className="text-right num ink">{g.supply_hit_probability != null ? `${(g.supply_hit_probability * 100).toFixed(0)}%` : '--'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    function GoodsPage({ data, k, setK, chokes }) {
+      if (!data) return <Empty>Loading…</Empty>;
+      return (
+        <div className="space-y-6 fade-in">
+          <div className="flex flex-col md:flex-row md:items-center gap-3">
+            <div className="flex-1 text-[13px] ink-2">{data.algorithm} on two features. {data.converged ? `Converged in ${data.iterations} iterations` : 'Did not converge'} · silhouette <span className="num ink">{data.silhouette}</span> · WCSS <span className="num ink">{fmtNum(data.inertia_wcss, 0)}</span></div>
+            <div className="seg">{[2, 3].map((n) => <button key={n} className={k === n ? 'on' : ''} onClick={() => setK(n)}>k = {n}</button>)}</div>
+          </div>
+          <div className={`grid grid-cols-1 ${data.clusters.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+            {data.clusters.map((cl) => (
+              <div key={cl.label} className="panel p-5">
+                <div className="flex items-center justify-between"><span className={`pill ${CLUSTER[cl.label].pill}`}><span className="dot" />{CLUSTER[cl.label].label}</span><span className="text-[12px] muted">{cl.size} goods · centroid <span className="num">({cl.centroid.map((v) => v.toFixed(0)).join(', ')})</span></span></div>
+                <div className="text-[13.5px] ink mt-3 leading-relaxed">{cl.members.join(', ')}</div>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <Panel title="Clusters" sub="Each dot is a good; crosses are the k-means centroids. Hover a dot for details.">
+              <Scatter data={data} />
+              <div className="flex gap-4 mt-3 text-[12px] ink-2 flex-wrap">{data.clusters.map((cl) => <span key={cl.label} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: CLUSTER[cl.label].css }} />{CLUSTER[cl.label].label}</span>)}</div>
+              <p className="text-[12px] muted mt-3 leading-relaxed">{data.data_note}</p>
+            </Panel>
+            <Panel title="Exposure to each passage" sub="Share of each good's sea trade through the passage (column header: its current disruption probability). Supply hit = 1 − Π(1 − share × P), the noisy-OR model." bodyClass="p-2">
+              <ExposureHeat data={data} chokes={chokes} />
+            </Panel>
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // PAGE: HOW THE AI WORKS
+    // =====================================================================
+    function AIPage({ health, intel, chokes, signals, clusters, routes }) {
+      const agent = health?.agent;
+      const events = intel?.events || [];
+      const gem = events.filter((e) => e.analysis_engine?.startsWith('GEMINI')).length;
+      const rule = events.filter((e) => e.analysis_engine === 'RULE_ENGINE').length;
+      const sig = signals?.chokepoints || [];
+      const shifts = sig.filter((c) => c.traffic?.change_point);
+      const anomalies = sig.filter((c) => c.traffic?.anomaly).length;
+      const hz = sig.find((c) => c.id === 'HORMUZ')?.traffic;
+      const topGood = clusters ? [...clusters.commodities].sort((a, b) => (b.supply_hit_probability || 0) - (a.supply_hit_probability || 0))[0] : null;
+      const topChoke = chokes ? [...chokes].sort((a, b) => (b.fusion?.posterior || 0) - (a.fusion?.posterior || 0))[0] : null;
+      const live = intel?.mode === 'LIVE';
+      const T = [
+        { n: 'A* search', cat: 'Search', what: 'Finds the safest and the fastest sea route on a 16-node graph. Cost g = sailing days + canal waits + λ × risk penalty; heuristic h = great-circle sailing time.', where: 'Nishant/routing.py · a_star()', live: routes?.safe_route ? `Last search expanded ${routes.safe_route.search.nodes_expanded} nodes; heuristic ${health?.heuristic?.admissible ? 'admissible and consistent' : 'not verified'} over ${health?.heuristic?.directed_edges_checked} edges` : 'Run a route search', href: '#/routes' },
+        { n: 'LLM threat analyst', cat: 'Generative AI', what: 'Gemini reads the top stories and returns strict JSON: passage, event type, severity 1–10 and a recommended action. Rate-limited, with automatic fallback.', where: 'Nishant/core.py · LLMEngine', live: live ? `${gem} stories rated by ${intel.model || 'Gemini'}` : `Status: ${health?.llm?.status || '…'}`, href: '#/intel' },
+        { n: 'Rule-based expert system', cat: 'Knowledge-based', what: '16 forward-chaining rules (R01–R16) rate news when the LLM is unavailable and give an explainable rule trace.', where: 'Yash/intelligence.py · rule_engine_assess()', live: live ? `${rule} stories rated by rules` : 'On standby', href: '#/intel' },
+        { n: 'TF-IDF + cosine similarity', cat: 'NLP', what: 'Turns articles into term vectors, merges reports of the same event across outlets (corroboration), and retrieves context for the Copilot (RAG).', where: 'Abhik/ai_models.py · cluster_stories()', live: live ? `${fmtNum(intel.articles_ingested)} articles → ${intel.stories_found} stories` : 'Runs on live news', href: '#/intel' },
+        { n: 'Naive-Bayes evidence fusion', cat: 'Probabilistic reasoning', what: 'Adds log-likelihood ratios from news, AIS traffic, Cape diversions and markets to a structural prior to get P(disruption) per passage.', where: 'Abhik/ai_models.py · fuse()', live: topChoke?.fusion ? `${topChoke.name}: ${(topChoke.fusion.posterior * 100).toFixed(0)}% (${topChoke.fusion.confidence} confidence)` : '…', href: '#/chokepoints' },
+        { n: 'Change-point detection', cat: 'Time series', what: 'Least-squares split of the transit series finds a lasting regime shift (such as a closure), so "normal" is measured from before it.', where: 'Abhik/ai_models.py · detect_change_point()', live: shifts.length ? shifts.map((c) => `${SHORT[c.id]} ${shortDate(c.traffic.change_point.date)} (${pct(c.traffic.change_point.shift)})`).join(', ') : live ? 'No lasting shift detected' : 'Runs on live AIS data', href: '#/chokepoints/HORMUZ' },
+        { n: 'Robust anomaly detection', cat: 'Time series', what: '7-day mean against a median/MAD baseline gives a z-score that resists outliers; |z| ≥ 3 is flagged unusual.', where: 'Abhik/ai_models.py · analyse_traffic()', live: sig.some((c) => c.traffic) ? `${anomalies} passage${anomalies === 1 ? '' : 's'} flagged unusual` : 'Runs on live AIS data', href: '#/chokepoints' },
+        { n: 'Holt exponential smoothing', cat: 'Forecasting', what: 'Level + trend model with α, β fitted by grid search on one-step-ahead error; 14-day forecast with an 80% band.', where: 'Abhik/ai_models.py · holt_fit()', live: hz ? `Hormuz: α ${hz.forecast_model.alpha}, β ${hz.forecast_model.beta}, RMSE ${hz.forecast_model.rmse}` : 'Runs on live AIS data', href: '#/chokepoints/HORMUZ' },
+        { n: 'K-means clustering', cat: 'Unsupervised learning', what: 'k-means++ groups goods by price volatility and supply strain into High risk / Watch / Stable; silhouette measures fit.', where: 'Yash/clustering.py · kmeans()', live: clusters ? `k = ${clusters.k}, silhouette ${clusters.silhouette}, ${clusters.iterations} iterations` : '…', href: '#/goods' },
+        { n: 'Noisy-OR model', cat: 'Probabilistic reasoning', what: 'Chance that a good\'s supply is hit by any passage: 1 − Π(1 − exposure × P(disruption)).', where: 'Abhik/ai_models.py · noisy_or()', live: topGood ? `${topGood.name}: ${(topGood.supply_hit_probability * 100).toFixed(0)}%` : '…', href: '#/goods' },
+        { n: 'Tool-using agent (Copilot)', cat: 'Agents', what: 'Gemini plans tool calls (routes, risk evidence, news search, traffic, markets, goods) and answers only with numbers from the platform.', where: 'Abhik/copilot.py · agent_answer()', live: 'Ask a question from the sidebar', href: null },
+      ];
+      return (
+        <div className="space-y-6 fade-in">
+          <Panel title="Agent design (PEAS)" sub={agent ? `${agent.type}. Environment: ${agent.environment}.` : null}>
+            {agent ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                <div><div className="kicker mb-2">Performance</div><div className="text-[13.5px] ink leading-relaxed">{agent.performance}</div></div>
+                <div><div className="kicker mb-2">Environment</div><div className="text-[13.5px] ink leading-relaxed">Global sea-lane graph of 16 nodes and {health.graph.directed_edges} directed edges; partially observable, dynamic, stochastic</div></div>
+                <div><div className="kicker mb-2">Actuators</div><ul className="text-[13.5px] ink space-y-1">{agent.actuators.map((a) => <li key={a}>{a}</li>)}</ul></div>
+                <div><div className="kicker mb-2">Sensors</div><ul className="text-[13px] ink-2 space-y-1">
+                  <li>{agent.sensors.news.length} news feeds</li><li>{agent.sensors.traffic}</li><li>{agent.sensors.markets.length} market series</li><li>Live AIS: {agent.sensors.live_ais.join(', ')}</li>
+                </ul></div>
+              </div>
+            ) : <div className="muted">Loading…</div>}
+          </Panel>
+          <div>
+            <div className="kicker mb-3">Reasoning pipeline</div>
+            <Pipeline intel={intel} health={health} chokes={chokes} clusters={clusters} routes={routes} />
+          </div>
+          <div>
+            <div className="kicker mb-3">AI techniques · live results</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
+              {T.map((t) => {
+                const body = (
+                  <>
+                    <div className="flex items-center justify-between gap-2"><span className="pill pill-accent">{t.cat}</span><span className="mono text-[11px] muted truncate">{t.where}</span></div>
+                    <div className="text-[15px] font-semibold ink mt-3">{t.n}</div>
+                    <p className="text-[13px] ink-2 mt-1.5 leading-relaxed flex-1">{t.what}</p>
+                    <div className="mt-3 pt-3 border-t hair flex items-start gap-2 text-[12.5px]"><span className="w-1.5 h-1.5 rounded-full mt-[6px] shrink-0" style={{ background: 'var(--ok)' }} /><span className="ink">{t.live}</span></div>
+                  </>
+                );
+                return t.href
+                  ? <a key={t.n} href={t.href} className="panel p-5 flex flex-col hover:border-[var(--line-2)] transition-colors">{body}</a>
+                  : <div key={t.n} className="panel p-5 flex flex-col">{body}</div>;
+              })}
+            </div>
+          </div>
+          {signals?.fusion_model && (
+            <Panel title="Fusion model specification" sub="Exact formulas used to turn evidence into a disruption probability">
+              <div className="space-y-1.5 text-[12.5px]">
+                {Object.entries(signals.fusion_model).map(([k, v]) => <div key={k} className="grid grid-cols-[100px_1fr] gap-3"><span className="muted capitalize">{k}</span><span className="mono ink-2 break-words">{v}</span></div>)}
+              </div>
+            </Panel>
+          )}
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // COPILOT DRAWER
+    // =====================================================================
+    const SUGGESTIONS = [
+      'Is it safe to send an LNG tanker from Dubai to Rotterdam this week?',
+      'How much ship traffic is going through Hormuz?',
+      'Why is the Red Sea rated the way it is?',
+      'What happens to oil tankers if Hormuz reopens?',
+      'What are oil and freight markets doing?',
+      'Which goods are most at risk?',
+    ];
+    const TOOL_LABEL = {
+      get_chokepoint_risk: 'Risk evidence', compare_routes: 'Route search', search_news: 'News search',
+      get_ship_traffic: 'Ship traffic', get_market_data: 'Market data', get_goods_at_risk: 'Goods at risk',
+    };
+
+    function Copilot({ online, open, setOpen }) {
+      const [messages, setMessages] = useState([]);
+      const [input, setInput] = useState('');
+      const [busy, setBusy] = useState(false);
+      const listRef = useRef(null);
+      const inputRef = useRef(null);
+
+      useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [messages, busy, open]);
+      useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 50); }, [open]);
+      useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [setOpen]);
+
+      const send = async (text, preset = false) => {
+        const cmd = (text ?? input).trim();
+        if (!cmd || busy) return;
+        setMessages((m) => [...m, { role: 'user', text: cmd }]);
+        setInput('');
+        setBusy(true);
+        try {
+          const data = await api('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: cmd, preset }) }, 45000);
+          setMessages((m) => [...m, { role: 'ai', text: data.response || 'No answer was returned.', engine: data.engine, tools: data.tools_used || [], note: data.note }]);
+        } catch {
+          setMessages((m) => [...m, { role: 'err', text: "Couldn't reach the server. Make sure the server (python run.py) is running, then try again." }]);
+        }
+        setBusy(false);
+      };
+
+      return (
+        <>
+          {open && <div className="fixed inset-0 z-[1290] bg-black/30 lg:bg-transparent lg:pointer-events-none" onClick={() => setOpen(false)} />}
+          <aside role="dialog" aria-label="AI analyst" aria-hidden={!open}
+            className="fixed z-[1300] top-0 right-0 bottom-0 w-full sm:w-[460px] flex flex-col border-l hair transition-transform duration-200"
+            style={{ background: 'var(--panel)', boxShadow: open ? 'var(--shadow)' : 'none', transform: open ? 'none' : 'translateX(105%)', visibility: open ? 'visible' : 'hidden', transition: 'transform .2s ease, visibility .2s' }}>
+            <div className="px-5 py-4 border-b hair flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}><Icon name="chat" /></span>
+                <div><div className="text-[15px] font-semibold ink">AI analyst</div><div className="text-[12px] muted">Answers from live news, AIS, prices and routing</div></div>
+              </div>
+              <div className="flex items-center gap-1">
+                {messages.length > 0 && <button className="btn btn-sm btn-ghost" onClick={() => setMessages([])} disabled={busy}>Clear</button>}
+                <button className="btn btn-sm btn-ghost !px-2" onClick={() => setOpen(false)} aria-label="Close"><Icon name="close" /></button>
+              </div>
+            </div>
+            <div ref={listRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+              {messages.length === 0 && (
+                <div className="space-y-3">
+                  <p className="text-[13px] muted">Ask about any passage, route, good or market. Try:</p>
+                  {SUGGESTIONS.map((s) => (
+                    <button key={s} onClick={() => send(s, true)} disabled={busy || online === false} className="panel-2 w-full text-left px-4 py-3 text-[13px] ink-2 hover:text-[var(--ink)] hover:border-[var(--line-2)] transition-colors">{s}</button>
+                  ))}
+                </div>
+              )}
+              {messages.map((m, i) => (
+                <div key={i}>
+                  {m.role === 'user' && <div className="flex justify-end"><div className="max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-[13.5px] ink" style={{ background: 'var(--accent-soft)' }}>{m.text}</div></div>}
+                  {m.role === 'ai' && (
+                    <div className="space-y-2">
+                      {m.tools?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {m.tools.map((t, j) => <span key={j} className="pill pill-neutral !text-[11px] !py-1" title={JSON.stringify(t.args)}>{TOOL_LABEL[t.tool] || t.tool}{t.args?.chokepoint ? `: ${titleCase(t.args.chokepoint)}` : t.args?.query ? `: "${t.args.query}"` : ''}</span>)}
+                        </div>
+                      )}
+                      <div className="md text-[13.5px] ink-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+                      <div className="text-[11px] muted">{m.engine === 'RULE_ENGINE' ? 'Answered by the built-in analyst' : m.engine}{m.note ? ` · ${m.note}` : ''}</div>
+                    </div>
+                  )}
+                  {m.role === 'err' && <div className="text-[13px]" style={{ color: 'var(--crit)' }}>{m.text}</div>}
+                </div>
+              ))}
+              {busy && <div className="flex items-center gap-2 text-[13px] muted"><span className="spinner" />Thinking with tools…</div>}
+            </div>
+            <form className="px-4 py-3 border-t hair flex items-center gap-2 shrink-0" onSubmit={(e) => { e.preventDefault(); send(); }}>
+              <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} disabled={busy || online === false} className="field" placeholder="Ask a question" />
+              <button className="btn btn-primary" type="submit" disabled={busy || !input.trim() || online === false}>Send</button>
+            </form>
+          </aside>
+          {!open && (
+            <button onClick={() => setOpen(true)} aria-label="Ask the AI analyst" className="fixed z-[1250] right-5 bottom-5 h-12 pl-4 pr-5 rounded-full flex items-center gap-2 btn-primary font-semibold text-[13.5px]" style={{ boxShadow: 'var(--shadow)' }}>
+              <Icon name="chat" size={20} />Ask AI
+            </button>
+          )}
+        </>
+      );
+    }
+
+    // =====================================================================
+    // APP
+    // =====================================================================
+    function parseHash() {
+      const parts = (window.location.hash || '').replace(/^#\/?/, '').split('/');
+      const page = NAV.some((n) => n.id === parts[0]) ? parts[0] : 'command';
+      return { page, arg: parts[1] || null };
+    }
+
+    function App() {
+      const [route, setRoute] = useState(parseHash());
+      const [theme, setTheme] = useState(readTheme());
+      const [menu, setMenu] = useState(false);
+      const [online, setOnline] = useState(null);
+      const [health, setHealth] = useState(null);
+      const [graph, setGraph] = useState(null);
+      const [chokes, setChokes] = useState(null);
+      const [intel, setIntel] = useState(null);
+      const [ingesting, setIngesting] = useState(false);
+      const [clusters, setClusters] = useState(null);
+      const [k, setK] = useState(2);
+      const [routes, setRoutes] = useState(null);
+      const [chatOpen, setChatOpen] = useState(false);
+      const [signals, setSignals] = useState(null);
+      const [markets, setMarkets] = useState(null);
+      const [ticker, setTicker] = useState(null);
+      const lastRouteReq = useRef(null);
+      const kRef = useRef(2);
+
+      useEffect(() => {
+        const on = () => { setRoute(parseHash()); window.scrollTo({ top: 0 }); };
+        window.addEventListener('hashchange', on);
+        return () => window.removeEventListener('hashchange', on);
+      }, []);
+
+      const toggleTheme = useCallback(() => {
+        const t = theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+        try { localStorage.setItem('gc-theme', t); } catch {}
+        setTheme(t);
+      }, [theme]);
+
+      const ping = useCallback(async () => {
+        try { setHealth(await api('/api/health', {}, 6000)); setOnline(true); return true; }
+        catch { setOnline(false); return false; }
+      }, []);
+      const loadChokes = useCallback(async () => { try { setChokes((await api('/api/chokepoints')).chokepoints); } catch {} }, []);
+      const loadClusters = useCallback(async (kk) => { try { setClusters(await api(`/api/clusters?k=${kk ?? kRef.current}`)); } catch {} }, []);
+      const loadIntel = useCallback(async () => { try { setIntel(await api('/api/intelligence')); } catch {} }, []);
+      const loadGraph = useCallback(async () => { try { setGraph(await api('/api/graph')); } catch {} }, []);
+      const loadSignals = useCallback(async () => { try { setSignals(await api('/api/signals')); } catch {} }, []);
+      const loadMarkets = useCallback(async () => { try { setMarkets(await api('/api/markets')); } catch {} }, []);
+
+      const computeRoute = useCallback(async (start, end, override) => {
+        const qs = new URLSearchParams({ start, end, override: override || '' });
+        const data = await api(`/api/routes?${qs.toString()}`);
+        lastRouteReq.current = { start, end, override };
+        setRoutes(data);
+        return data;
+      }, []);
+
+      const bootstrap = useCallback(async () => {
+        if (!(await ping())) return;
+        await Promise.all([loadGraph(), loadChokes(), loadIntel(), loadClusters(), loadSignals(), loadMarkets()]);
+        if (!lastRouteReq.current) { try { await computeRoute('SHANGHAI', 'ROTTERDAM', ''); } catch {} }
+      }, [ping, loadGraph, loadChokes, loadIntel, loadClusters, loadSignals, loadMarkets, computeRoute]);
+
+      useEffect(() => { bootstrap(); }, [bootstrap]);
+
+      useEffect(() => {
+        const t = setInterval(async () => {
+          const wasDown = online === false || !graph;
+          const ok = await ping();
+          if (ok && wasDown) bootstrap();
+        }, 20000);
+        return () => clearInterval(t);
+      }, [online, graph, ping, bootstrap]);
+
+      useEffect(() => { kRef.current = k; loadClusters(k); }, [k, loadClusters]);
+
+      useEffect(() => {
+        const load = async () => { try { setTicker(await api('/api/ticker', {}, 20000)); } catch {} };
+        load();
+        const t = setInterval(load, 120000);
+        return () => clearInterval(t);
+      }, []);
+
+      const ingest = useCallback(async () => {
+        setIngesting(true);
+        try {
+          setIntel(await api('/api/intelligence/ingest', { method: 'POST' }, 150000));
+          await Promise.all([loadChokes(), loadClusters(), loadSignals(), loadMarkets(), ping()]);
+          if (lastRouteReq.current) {
+            const { start, end, override } = lastRouteReq.current;
+            try { await computeRoute(start, end, override); } catch {}
+          }
+        } catch { setOnline(false); }
+        setIngesting(false);
+      }, [loadChokes, loadClusters, loadSignals, loadMarkets, ping, computeRoute]);
+
+      const openChoke = useCallback((id) => { window.location.hash = `#/chokepoints/${id}`; }, []);
+      const nav = NAV.find((n) => n.id === route.page);
+      const common = { online, theme, graph, chokes, signals };
+
+      return (
+        <div className="shell">
+          <Sidebar route={route} open={menu} setOpen={setMenu} health={health} online={online} chokes={chokes} theme={theme} toggleTheme={toggleTheme} onAsk={() => setChatOpen(true)} />
+          <div className="min-w-0 flex flex-col">
+            <TopBar nav={nav} intel={intel} ingesting={ingesting} onIngest={ingest} online={online} onMenu={() => setMenu(true)} ticker={ticker} />
+            <main className="flex-1 px-4 sm:px-5 lg:px-8 py-6 lg:py-8 max-w-[1600px] w-full mx-auto">
+              {online === false && (
+                <div className="panel px-5 py-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3" style={{ borderColor: 'color-mix(in srgb, var(--crit) 45%, transparent)' }}>
+                  <div>
+                    <div className="text-[14px] font-medium" style={{ color: 'var(--crit)' }}>Can't reach the server</div>
+                    <div className="text-[13px] ink-2 mt-1">Start it with <span className="mono ink">python run.py</span>, then open <span className="mono ink">http://localhost:8000</span>.</div>
+                  </div>
+                  <button className="btn" onClick={bootstrap}>Retry</button>
+                </div>
+              )}
+              {route.page === 'command' && <CommandCenter {...common} intel={intel} ticker={ticker} health={health} clusters={clusters} routes={routes} openChoke={openChoke} onIngest={ingest} ingesting={ingesting} />}
+              {route.page === 'chokepoints' && <ChokepointPage {...common} id={route.arg} clusters={clusters} setChoke={openChoke} />}
+              {route.page === 'routes' && <RoutePlanner {...common} routes={routes} onCompute={computeRoute} />}
+              {route.page === 'intel' && <IntelPage intel={intel} openChoke={openChoke} onIngest={ingest} ingesting={ingesting} online={online} />}
+              {route.page === 'markets' && <MarketsPage markets={markets} ticker={ticker} onIngest={ingest} ingesting={ingesting} online={online} />}
+              {route.page === 'goods' && <GoodsPage data={clusters} k={k} setK={setK} chokes={chokes} />}
+              {route.page === 'ai' && <AIPage health={health} intel={intel} chokes={chokes} signals={signals} clusters={clusters} routes={routes} />}
+            </main>
+            <footer className="border-t hair px-5 lg:px-8 lg:pr-40 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-[12px] muted">
+              <span>Global Chain AI · AI agent for maritime chokepoint risk</span>
+              <span>Educational project. Not for navigation or trading decisions.</span>
+            </footer>
+          </div>
+          <Copilot online={online} open={chatOpen} setOpen={setChatOpen} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+
+  <script>
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        if (document.getElementById('root').children.length) return;
+        var missing = [];
+        if (!window.React) missing.push('React 18.3.1');
+        if (!window.ReactDOM) missing.push('ReactDOM 18.3.1');
+        if (!window.Babel) missing.push('Babel standalone');
+        var box = document.getElementById('boot-error');
+        box.style.display = 'block';
+        box.innerHTML = '<strong>The dashboard could not start.</strong><br>' + (missing.length
+          ? 'These libraries did not load from the CDN: ' + missing.join(', ') + '. Check your internet connection and reload.'
+          : 'A script error stopped the page. Open the browser console for details.');
+      }, 4000);
+    });
+  </script>
+</body>
+</html>
