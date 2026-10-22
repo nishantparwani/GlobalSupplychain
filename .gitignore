@@ -1,7 +1,20 @@
+# secrets
 .env
-.venv/
+
+# Python
 __pycache__/
+*.pyc
+.venv/
+venv/
+
+# old build tooling and backups, not part of the app
+legacy/
 node_modules/
 *.exe
 *.zip
-output.css
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
